@@ -24,8 +24,8 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 @export var accel_calm: float = 3.0
 @export var accel_flee: float = 8.0
 @export var decel: float = 3.5
-@export var wander_min_distance: float = 3.0
-@export var wander_max_distance: float = 8.0
+@export var wander_min_distance: float = 4.0
+@export var wander_max_distance: float = 12.0
 ## 一次惊跑最多跑这么远，跑到就停下张望。
 @export var flee_max_distance: float = 9.0
 ## 被石头落点"挪开"：小跑背离落点，距离随落点远近在 [min,max] 之间。
@@ -50,11 +50,15 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 @export var fear_half_life: float = 6.0
 
 @export_group("身位施压 (BEHAVIOR §6.1)")
-@export var pressure_radius: float = 6.0
-@export var pressure_push_walk: float = 0.6
+## 不吆喝：人走近只是轻微让开，不加惊吓；跑动才有惊吓。
+@export var pressure_radius: float = 4.0
+@export var pressure_push_walk: float = 0.5
 @export var pressure_push_run: float = 2.0
-@export var pressure_fear_walk: float = 0.05
 @export var pressure_fear_run: float = 0.25
+## 吆喝：半径更大，牛小跑挪开，带少量惊吓。
+@export var drive_radius: float = 8.0
+@export var drive_nudge_distance: float = 4.0
+@export var drive_fear_per_sec: float = 0.08
 
 var state: State = State.GRAZE
 var fear: float = 0.0
@@ -161,7 +165,7 @@ func _enter(s: State) -> void:
 	match s:
 		State.GRAZE:
 			_has_spread_fear = false
-			_state_time_left = _lognormal(40.0, 0.4) * greed
+			_state_time_left = _lognormal(20.0, 0.4) * greed
 		State.WANDER:
 			_has_spread_fear = false
 			_state_time_left = 30.0
@@ -201,8 +205,8 @@ func _on_state_timeout() -> void:
 				_enter(State.FOLLOW)
 				return
 			var r := randf()
-			var wander_w := (0.35 + Clock.homing_urge() * 0.35) * restlessness
-			var rest_w := 0.15 if Clock.phase != Clock.Phase.NOON else 0.5
+			var wander_w := (0.55 + Clock.homing_urge() * 0.3) * restlessness
+			var rest_w := 0.08 if Clock.phase != Clock.Phase.NOON else 0.35
 			if r < wander_w:
 				_enter(State.WANDER)
 			elif r < wander_w + rest_w:
@@ -254,17 +258,27 @@ func _apply_player_pressure(delta: float) -> void:
 	var away := global_position - _player.global_position
 	away.y = 0.0
 	var d := away.length()
-	if d > pressure_radius or d < 0.01:
+	if d < 0.01:
+		return
+	var driving: bool = _player.get("driving") == true
+	if driving and d <= drive_radius:
+		# 吆喝：平静的牛小跑背离玩家，惊吓缓慢累积（久了会真的惊跑）。
+		var falloff := 1.0 - d / drive_radius
+		add_fear(drive_fear_per_sec * falloff * delta, _player.global_position)
+		if state != State.FLEE and state != State.NUDGE and fear < fear_threshold * boldness:
+			_nudge_target = global_position + away.normalized() * drive_nudge_distance
+			_enter(State.NUDGE)
+		return
+	if d > pressure_radius:
 		return
 	var speed: float = _player.horizontal_speed()
 	if speed < 0.1:
 		return
 	var running: bool = speed > 3.0
 	var falloff := 1.0 - d / pressure_radius
-	var push := pressure_push_run if running else pressure_push_walk
-	var fear_rate := pressure_fear_run if running else pressure_fear_walk
-	_external_push += away.normalized() * push * falloff
-	add_fear(fear_rate * falloff * delta, _player.global_position)
+	_external_push += away.normalized() * (pressure_push_run if running else pressure_push_walk) * falloff
+	if running:
+		add_fear(pressure_fear_run * falloff * delta, _player.global_position)
 
 ## 惊吓来源记为位置而非方向，进入惊跑时才据此算背离方向。
 func add_fear(amount: float, threat_pos: Vector3) -> void:

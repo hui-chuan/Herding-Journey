@@ -10,7 +10,14 @@ extends CharacterBody3D
 
 @onready var camera_rig: Node3D = get_node("../CameraRig")
 
+## 吆喝模式：开着时靠近牛的驱赶力更强、半径更大（BEHAVIOR §6.1 的主动施压档）。
+var driving: bool = false
+
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+
+func _process(_delta: float) -> void:
+	if Input.is_action_just_pressed("drive_toggle"):
+		driving = not driving
 
 func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
