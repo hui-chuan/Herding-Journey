@@ -6,6 +6,10 @@ var _shot_path: String = ""
 var _shot_timer: float = 2.0
 var _settlement_timer: float = 0.0
 var _log_positions: bool = false
+var _log_grass: bool = false
+var _forced_scale: float = 0.0
+var _pin_herd: bool = false
+var _grass_timer: float = 0.0
 var _log_timer: float = 0.0
 var _test_sling: bool = false
 var _test_drive: bool = false
@@ -23,11 +27,17 @@ func _ready() -> void:
 			_test_sling = true
 		if a == "--log-positions":
 			_log_positions = true
+		if a == "--log-grass":
+			_log_grass = true
+		if a == "--pin-herd":
+			_pin_herd = true
 		if a.begins_with("--player-at="):
 			var xz := a.trim_prefix("--player-at=").split(",")
 			var p := get_tree().get_first_node_in_group("player") as Node3D
 			if p and xz.size() == 2:
 				p.global_position = Vector3(float(xz[0]), 1.0, float(xz[1]))
+		if a.begins_with("--time-scale="):
+			_forced_scale = float(a.trim_prefix("--time-scale="))
 		if a.begins_with("--shot-delay="):
 			_shot_timer = float(a.trim_prefix("--shot-delay="))
 		if a.begins_with("--screenshot="):
@@ -62,6 +72,66 @@ func _process(delta: float) -> void:
 				print("TEST sling lands at %s" % point)
 				for cow in get_tree().get_nodes_in_group("cows"):
 					cow.apply_sling_impact(point, 6.0, 0.7)
+	if _pin_herd:
+		# 把群按住在出生点附近，单独验证"一片草场被连吃"的局部消耗。
+		for cow in get_tree().get_nodes_in_group("cows"):
+			var off: Vector3 = cow.global_position - Vector3(8.0, 0.0, -8.0)
+			off.y = 0.0
+			if off.length() > 20.0:
+				cow.global_position = Vector3(8.0, cow.global_position.y, -8.0) + off.normalized() * 20.0
+	if _log_grass:
+		_grass_timer -= delta
+		if _grass_timer <= 0.0:
+			_grass_timer = 5.0
+			var gl := get_tree().get_first_node_in_group("grassland") as Grassland
+			if gl != null:
+				var total := 0.0
+				var bare := 0
+				var degr := 0.0
+				for y in gl.grid_size:
+					for x in gl.grid_size:
+						var c: Vector3 = gl.cell_center(Vector2i(x, y))
+						total += gl.sample(c)
+						degr += gl.degradation_at(c)
+						if gl.sample(c) < 0.1:
+							bare += 1
+				var n := gl.grid_size * gl.grid_size
+				var sat := 0.0
+				var cows := get_tree().get_nodes_in_group("cows")
+				for cow in cows:
+					sat += cow.satiety
+				# 群脚下的局部草量：地图均值看不出消耗，局部才看得出。
+				var local := 0.0
+				var lmin := 1.0
+				var centroid := Vector3.ZERO
+				for cow in cows:
+					centroid += cow.global_position
+				if cows.size() > 0:
+					centroid /= cows.size()
+				var lc := gl.cell_at(centroid)
+				var cnt := 0
+				for dy in range(-2, 3):
+					for dx in range(-2, 3):
+						var cc := Vector2i(clampi(lc.x + dx, 0, gl.grid_size - 1), clampi(lc.y + dy, 0, gl.grid_size - 1))
+						var v: float = gl.sample(gl.cell_center(cc))
+						local += v
+						lmin = minf(lmin, v)
+						cnt += 1
+				var occupied := {}
+				for cow in cows:
+					occupied[gl.cell_at(cow.global_position)] = true
+				var spread := 0.0
+				for cow in cows:
+					spread = maxf(spread, cow.global_position.distance_to(centroid))
+				print("SPREAD cells=%d  max_radius=%.1fm" % [occupied.size(), spread])
+				var effsum := 0.0
+				for cow in cows:
+					effsum += cow.graze_efficiency()
+				print("EFF avg_under_cows=%.3f" % (effsum / maxf(1.0, float(cows.size()))))
+				print("GRASS day=%d t=%.2f  avg=%.4f  degr=%.4f  bare=%d  局部5x5=%.3f 最低=%.3f  avg_satiety=%.3f" % [
+					Clock.day, Clock.time_of_day, total / n, degr / n, bare,
+					local / cnt, lmin, sat / maxf(1.0, float(cows.size()))])
+
 	if _log_positions:
 		_log_timer -= delta
 		if _log_timer <= 0.0:
@@ -79,7 +149,7 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 	if Input.is_action_just_pressed("debug_toggle"):
 		visible = not visible
-	Clock.time_scale = 20.0 if Input.is_action_pressed("debug_time_fast") else 1.0
+	Clock.time_scale = _forced_scale if _forced_scale > 0.0 else (20.0 if Input.is_action_pressed("debug_time_fast") else 1.0)
 	if _settlement_timer > 0.0:
 		_settlement_timer -= delta
 		if _settlement_timer <= 0.0:
@@ -99,7 +169,8 @@ func _process(delta: float) -> void:
 		var p: Node3D = get_tree().get_first_node_in_group("player")
 		var d: float = cow.global_position.distance_to(p.global_position) if p else 0.0
 		var pen := " pen" if cow.has_method("is_in_pen") and cow.is_in_pen() else ""
-		lines.append("%s  %s%s  fear=%.2f  dist=%.1f" % [cow.name, cow.state_name(), pen, cow.fear, d])
+		lines.append("%s  %s%s  fear=%.2f  饱=%.2f  草=%.2f  dist=%.1f" % [
+			cow.name, cow.state_name(), pen, cow.fear, cow.satiety, cow.graze_efficiency(), d])
 	lines.append("WASD 移动  Shift 跑  Q/E 或右键拖拽转视角  左键甩石  F 吆喝  Tab 远/近  T 快进  F12 隐藏")
 	_label.text = "\n".join(lines)
 

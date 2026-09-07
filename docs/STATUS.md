@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | M1 手感 | 灰盒完成 | 玩家、相机、乌尔朵、单牛躲避 |
 | M2 群体 | 灰盒完成，调参中 | 状态机、性格、头牛、群体力、传染、吆喝、区域压力 |
-| M3 可玩 | 部分 | 时钟与光照有；畜栏与门有；归栏判定与简易结算有（调试层内）；**草场数据层未做** |
+| M3 可玩 | 部分 | 时钟与光照有；畜栏与门有；归栏判定与简易结算有（调试层内）；草场数据层已做，压力定标待解（GRASSLAND §2.4） |
 | M4 循环 | 未开始 | 走失、存档 |
 
 ## 目录
@@ -22,6 +22,7 @@ shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 =
 shaders/grass.gdshader        草丛：随风摆动，按实例变色，法线统一朝上
 scripts/autoload/clock.gd     全局时钟：一天 480 s（**待改 1800 s**，D4），五时段（**待按 DAY_CYCLE §1.1 重划**），homing_urge()
 scripts/world/day_light.gd    太阳角度与色温随时钟变化
+scripts/world/grassland.gd    草场网格 40×40（Image RGF：R 草量 G 退化）：查询、消耗、挑草场、每日恢复、存档
 scripts/world/grass_field.gd  MultiMesh 铺 12 万丛草
 scripts/world/mountains.gd    一圈低多边形远山
 scripts/world/greybox_props.gd 散落石块（StaticBody3D，带碰撞）
@@ -78,13 +79,19 @@ $G --path . -- --shot-delay=10 --player-at=-16,30 ...    # 延时截图、放置
 $G --headless --path . --quit-after 1200 -- --log-positions   # 每秒打印每头牛的状态与位置
 $G --headless --path . --quit-after 700 -- --log-positions --test-sling   # 3 s 后在第一头普通牛旁落石
 $G --headless --path . --quit-after 1500 -- --log-positions --test-drive  # 玩家自动站在群后吆喝跟走
+$G --headless --path . --quit-after 9000 -- --log-grass --time-scale=60     # 每 5 s 打印草场均值/退化/秃格/群的占格与饱腹
+$G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=60  # 把群按在原地，单独验证局部过牧
 ```
 
 游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 远近。
 
 ## 已知缺口
 
-- 草场数据层未做，头牛"挑草场"目前用一个假的草量场（离原点越近越高）。规格已定：`GRASSLAND.md`。
+- ~~草场数据层~~ → **已实现**（`grassland.gd`）。消耗、效率曲线、每日逻辑斯蒂恢复、退化累积/自愈、初始双层噪声、存档接口均已验证。
+- **草场压力未达设计目标**：5 头牛只占 2–3 格（半径约 5 m），而定标假设 5×5 格，压力集中约 10 倍，饱腹度会掉到 0。
+  根因是群体力（`separation_radius` 3.5 / `cohesion_start` 4）与 BEHAVIOR §5"牛群是松散的"冲突，不是草场本身。
+  详见 `GRASSLAND.md` §2.4，**需先定"牛群该有多松"**。
+- 草量可视化（P1）未做：`grassland.texture()` 已备好，`grass.gdshader` 尚未接。
 - 一天仍是 480 s，D4 已改为 1800 s；时段边界与 `homing_urge()` 曲线待按 `DAY_CYCLE.md` §1.1/§3.2 重定。
 - 天黑宽限（60 s，D17）未做。
 - 走失、死亡、存档、正式结算未做；结算目前只是调试层的一行文字，6 s 后自动进入次日。规格已定：`DAY_CYCLE.md` §4–§5。

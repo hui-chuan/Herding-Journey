@@ -15,6 +15,7 @@
 [ext_resource type="Script" path="res://scripts/world/mountains.gd" id="13_mountains"]
 [ext_resource type="Script" path="res://scripts/herd/herd_manager.gd" id="14_herd"]
 [ext_resource type="Resource" path="res://data/species/yak.tres" id="15_yak"]
+[ext_resource type="Script" path="res://scripts/world/grassland.gd" id="16_grassland"]
 [ext_resource type="Script" path="res://scripts/world/pen.gd" id="15_pen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
@@ -97,6 +98,9 @@ script = ExtResource("13_mountains")
 [node name="Pen" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, 30)
 script = ExtResource("15_pen")
+
+[node name="Grassland" type="Node3D" parent="."]
+script = ExtResource("16_grassland")
 
 [node name="Props" type="Node3D" parent="."]
 script = ExtResource("7_props")

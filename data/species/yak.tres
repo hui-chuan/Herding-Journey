@@ -40,5 +40,6 @@ pressure_push_run = 2.0
 pressure_fear_run = 0.25
 drive_radius = 8.0
 drive_fear_per_sec = 0.08
-graze_rate = 0.0025
+graze_efficiency_floor = 0.15
+graze_rate = 0.0015
 satiety_per_grass = 0.12

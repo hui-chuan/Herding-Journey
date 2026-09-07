@@ -6,6 +6,11 @@ extends CharacterBody3D
 enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 
 const DEFAULT_SPECIES := "res://data/species/yak.tres"
+## 非吃草时饱腹度的自然下降（每秒）。一天 1800 s 下约掉 0.36。
+const SATIETY_DECAY := 0.0002
+## 头牛挑草场的环形采样：内环避免选中脚下这一格（原地打转），外环用 leader_search_radius。
+const LEADER_PICK_MIN_RADIUS := 15.0
+const LEADER_PICK_SAMPLES := 12
 
 @export_group("性格 (BEHAVIOR §2)")
 @export var boldness: float = 1.0
@@ -26,6 +31,11 @@ const DEFAULT_SPECIES := "res://data/species/yak.tres"
 
 var state: State = State.GRAZE
 var fear: float = 0.0
+## 饱腹度 0–1（BEHAVIOR §1.1）。吃草上升，其余时间缓慢下降。
+var satiety: float = 0.5
+var _grassland: Grassland
+## 头牛上次挑草场的方向，给漂移一点惯性（GRASSLAND §3）。
+var _drift_dir: Vector3 = Vector3.ZERO
 var _state_time_left: float = 0.0
 var _wander_target: Vector3
 var _flee_dir: Vector3
@@ -53,6 +63,7 @@ func _ready() -> void:
 		_mesh.set_surface_override_material(0, shared.duplicate())
 	if is_leader:
 		add_to_group("lead_cow")
+	_grassland = get_tree().get_first_node_in_group("grassland") as Grassland
 	_noise.seed = randi()
 	_noise.frequency = 0.15
 	_resolve_leader()
@@ -61,6 +72,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_noise_t += delta * 0.05
 	_decay_fear(delta)
+	_update_satiety(delta)
 	_apply_player_pressure(delta)
 	if state != State.FLEE and fear >= species.fear_threshold * boldness:
 		_enter(State.FLEE)
@@ -131,11 +143,15 @@ func _enter(s: State) -> void:
 	match s:
 		State.GRAZE:
 			_has_spread_fear = false
-			_state_time_left = _lognormal(20.0, 0.4) * greed
+			# 草好就多待，草差就短促结束（GRASSLAND §2.3）。
+			_state_time_left = _lognormal(20.0, 0.4) * greed * (0.4 + 0.6 * graze_efficiency())
 		State.WANDER:
 			_has_spread_fear = false
-			_state_time_left = 30.0
 			_pick_wander_target()
+			# 走到目标要多久就给多久（上限 90 s）。头牛的挑草场目标有二三十米，
+			# 固定 30 s 会让它每次走到一半就被打断，群永远漂移不出去。
+			var trip := _flat_distance_to(_wander_target) / maxf(0.3, species.wander_speed)
+			_state_time_left = clampf(trip * 1.5, 10.0, 90.0)
 		State.REST:
 			_has_spread_fear = false
 			_state_time_left = _lognormal(120.0, 0.3)
@@ -173,6 +189,12 @@ func _on_state_timeout() -> void:
 			var r := randf()
 			var wander_w := (0.55 + Clock.homing_urge() * 0.3) * restlessness
 			var rest_w := 0.08 if Clock.phase != Clock.Phase.NOON else 0.35
+			# 草差就更想走、更不想卧下——牛群"自己离开吃秃的地方"由此涌现。
+			if graze_efficiency() < 0.5:
+				wander_w *= 2.5
+				rest_w *= 0.3
+			# 吃饱了更愿意休息，饿了更想吃（BEHAVIOR §1.1）。
+			rest_w *= lerpf(0.5, 1.6, satiety)
 			if r < wander_w:
 				_enter(State.WANDER)
 			elif r < wander_w + rest_w:
@@ -204,14 +226,14 @@ func _pick_wander_target() -> void:
 		var step := randf_range(6.0, 14.0)
 		_wander_target = global_position + to_pen.normalized() * step * lerpf(0.5, 1.8, home)
 		return
-	# 缓慢变化的噪声场给出方向，头牛会把方向轻轻偏向高草/围栏。
+	# 头牛：直接走向挑中的那一格（GRASSLAND §3）。
+	# 不要把它摊进下面的噪声采样——那样目标被稀释成十几米的随机漫步，
+	# 群就只在出生点附近打转，"往草好的地方漂移"不会发生。
+	if is_leader and _grassland != null:
+		_wander_target = _pick_pasture()
+		return
+	# 缓慢变化的噪声场给出方向。
 	var angle := _noise.get_noise_2d(_noise_t * 10.0, float(get_instance_id() % 1000)) * TAU
-	if is_leader:
-		var grass_bias := _best_grass_dir()
-		if grass_bias.length_squared() > 0.01:
-			var noise_dir := Vector3(cos(angle), 0.0, sin(angle))
-			var mixed := noise_dir.lerp(grass_bias, 0.55).normalized()
-			angle = atan2(mixed.z, mixed.x)
 	var dist := clampf(randf_range(species.wander_min_distance, species.wander_max_distance) * restlessness, species.wander_min_distance, species.wander_max_distance)
 	# 以噪声方向为中心撒若干候选点，按"离头牛/群近"加权抽取（BEHAVIOR §1.2）。
 	var anchor := _cohesion_anchor()
@@ -221,6 +243,8 @@ func _pick_wander_target() -> void:
 		var a := angle + randf_range(-PI * 0.75, PI * 0.75)
 		var cand := global_position + Vector3(cos(a), 0.0, sin(a)) * dist * randf_range(0.6, 1.0)
 		var score := randf() * 0.5
+		if _grassland != null:
+			score *= 0.3 + _grassland.sample(cand)
 		if anchor != Vector3.INF:
 			var d_now := _flat_distance_to(anchor)
 			var d_cand := cand.distance_to(anchor)
@@ -229,6 +253,29 @@ func _pick_wander_target() -> void:
 			best_score = score
 			best = cand
 	_wander_target = best
+
+## 吃草时从所在格扣草、涨饱腹；其余时间缓慢消耗（GRASSLAND §2.1）。
+## 用时钟缩放后的 delta：草的消耗属于"一天里发生的事"，快进时钟时它要跟着走（T17）。
+func _update_satiety(delta: float) -> void:
+	var game_delta := delta * Clock.time_scale
+	if state == State.GRAZE and _grassland != null:
+		# 摄入随草量衰减（GRASSLAND §2.2）：秃地上吃得慢，牛因此更早结束吃草去漫步。
+		var eff := graze_efficiency()
+		var rate := species.graze_rate * greed * eff
+		var eaten := _grassland.consume(global_position, rate * game_delta)
+		satiety = minf(1.0, satiety + eaten * species.satiety_per_grass)
+		# 脚下吃到不划算就立刻挪窝，不等这一轮吃草的计时走完。
+		# 没有这一条，牛会在同一格上反复进入吃草，把 25 格的压力压到三五格上。
+		if eff <= species.graze_efficiency_floor + 0.01:
+			_state_time_left = minf(_state_time_left, 1.0)
+	else:
+		satiety = maxf(0.0, satiety - SATIETY_DECAY * game_delta)
+
+## 脚下这一格的吃草效率 0.15–1.0（GRASSLAND §2.2）。没有草场时按满效率。
+func graze_efficiency() -> float:
+	if _grassland == null:
+		return 1.0
+	return _grassland.efficiency(global_position)
 
 func _decay_fear(delta: float) -> void:
 	fear *= pow(0.5, delta / species.fear_half_life)
@@ -404,19 +451,42 @@ func _spread_fear() -> void:
 			var source := _threat_pos if _has_threat else global_position
 			other.add_fear(species.contagion_fear / maxf(0.2, other.boldness), source)
 
+## 头牛挑草场（GRASSLAND §3）：直接返回选中的目标点。
+func _pick_pasture() -> Vector3:
+	var dir := _best_grass_dir()
+	if dir.length_squared() < 0.01:
+		return global_position
+	# 一次走 15–45 m 里的一段，不是一步到位；到了再挑下一块。
+	var step := randf_range(LEADER_PICK_MIN_RADIUS, species.leader_search_radius) * 0.5
+	return global_position + dir * step
+
+## 头牛挑草场（GRASSLAND §3）：向草场问一个目标格，返回指向它的方向。
+## 没有草场数据时回落到噪声，保证灰盒里也能跑。
 func _best_grass_dir() -> Vector3:
-	var best_dir := Vector3.ZERO
-	var best_score := -INF
-	for i in 10:
-		var angle := float(i) / 10.0 * TAU + _noise_t
-		var dir := Vector3(cos(angle), 0.0, sin(angle))
-		var p: Vector3 = global_position + dir * species.leader_search_radius
-		var grass := 1.0 - clampf(absf(p.x) + absf(p.z), 0.0, 180.0) / 360.0
-		var score := grass + _noise.get_noise_2d(p.x * 0.03, p.z * 0.03) * 0.25
-		if score > best_score:
-			best_score = score
-			best_dir = dir
-	return best_dir
+	if _grassland == null:
+		var a := _noise.get_noise_2d(_noise_t * 7.0, 31.0) * TAU
+		return Vector3(cos(a), 0.0, sin(a))
+	var bias_dir := Vector3.ZERO
+	var home := Clock.homing_urge()
+	if home > 0.0:
+		bias_dir = pen_center - global_position
+		bias_dir.y = 0.0
+		bias_dir = bias_dir.normalized()
+	var target := _grassland.best_cell_near(
+		global_position,
+		LEADER_PICK_MIN_RADIUS,
+		species.leader_search_radius,
+		LEADER_PICK_SAMPLES,
+		_drift_dir,
+		bias_dir,
+		home)
+	var dir := target - global_position
+	dir.y = 0.0
+	if dir.length_squared() < 0.01:
+		return _drift_dir
+	dir = dir.normalized()
+	_drift_dir = dir
+	return dir
 
 ## 跟随触发距离 = 种类基准 × 个体倍率。
 func follow_start_distance() -> float:

@@ -59,7 +59,9 @@ extends Resource
 @export var drive_fear_per_sec: float = 0.08
 
 @export_group("草场 (GRASSLAND §2)")
+## 与 Grassland.efficiency_floor 对应：吃到这个效率就认为不划算，该挪窝了。
+@export var graze_efficiency_floor: float = 0.15
 ## 每秒从所在格吃掉的草量。整个多日节奏的调速旋钮，定标见 GRASSLAND §2.1。
-@export var graze_rate: float = 0.0025
+@export var graze_rate: float = 0.0015
 ## 吃掉一单位草量转化的饱腹度。
 @export var satiety_per_grass: float = 0.12
