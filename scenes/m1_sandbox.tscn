@@ -13,6 +13,7 @@
 [ext_resource type="Shader" path="res://shaders/grass.gdshader" id="11_grass"]
 [ext_resource type="Script" path="res://scripts/world/grass_field.gd" id="12_field"]
 [ext_resource type="Script" path="res://scripts/world/mountains.gd" id="13_mountains"]
+[ext_resource type="Script" path="res://scripts/herd/herd_manager.gd" id="14_herd"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
 sky_top_color = Color(0.35, 0.55, 0.9, 1)
@@ -97,6 +98,7 @@ script = ExtResource("7_props")
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1164104346 groups=["player"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 collision_layer = 2
+collision_mask = 5
 script = ExtResource("1_player")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=1120176912]
@@ -134,6 +136,7 @@ fov = 60.0
 [node name="Cow" type="CharacterBody3D" parent="." unique_id=948913456]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 1, -8)
 collision_layer = 4
+collision_mask = 7
 script = ExtResource("4_cow")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Cow" unique_id=1855444185]
@@ -147,6 +150,10 @@ script = ExtResource("9_yak")
 transform = Transform3D(0.25, 0, 0, 0, 0.25, 0, 0, 0, 0.25, 0, 1.6, 0)
 mesh = SubResource("player_mesh")
 surface_material_override/0 = SubResource("cow_mat")
+
+[node name="HerdManager" type="Node" parent="."]
+script = ExtResource("14_herd")
+cow_template_path = NodePath("../Cow")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1183399508]
 script = ExtResource("6_debug")

@@ -9,6 +9,11 @@ const WHITE := Color(0.85, 0.82, 0.75)
 const HORN := Color(0.75, 0.7, 0.6)
 
 func _ready() -> void:
+	rebuild()
+
+func rebuild() -> void:
+	for child in get_children():
+		child.queue_free()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed if seed != 0 else hash(get_parent().name)
 	var coat: Color = DARK.lerp(BROWN, rng.randf() * 0.6)

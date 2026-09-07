@@ -3,7 +3,7 @@
 ## 手柄：以玩家朝向前方 gamepad_range 米为落点。
 extends Node3D
 
-@export var min_range: float = 15.0
+@export var min_range: float = 4.0
 @export var max_range: float = 40.0
 @export var gamepad_range: float = 25.0
 @export var cooldown: float = 2.0
