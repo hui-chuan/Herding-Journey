@@ -19,7 +19,7 @@ extends Resource
 @export var accel_flee: float = 8.0
 @export var decel: float = 3.5
 @export var wander_min_distance: float = 4.0
-@export var wander_max_distance: float = 12.0
+@export var wander_max_distance: float = 20.0
 ## 一次惊跑最多跑这么远，跑到就停下张望。
 @export var flee_max_distance: float = 9.0
 ## 被区域压力"挪开"：小跑背离源点，距离随远近在 [min,max] 之间。
@@ -29,13 +29,13 @@ extends Resource
 
 @export_group("牛群 (BEHAVIOR §5)")
 @export var leader_search_radius: float = 40.0
-@export var follow_start_distance: float = 13.0
-@export var follow_stop_distance: float = 7.0
-@export var separation_radius: float = 3.5
+@export var follow_start_distance: float = 30.0
+@export var follow_stop_distance: float = 20.0
+@export var separation_radius: float = 14.0
 @export var separation_push: float = 2.0
 ## 聚合：离头牛超过 cohesion_start 起有拉力，到 follow_start_distance 时达到 cohesion_push。
-@export var cohesion_start: float = 4.0
-@export var cohesion_push: float = 0.9
+@export var cohesion_start: float = 26.0
+@export var cohesion_push: float = 0.5
 ## 头牛受群体质心的轻微牵引，不会自己走丢。
 @export var leader_cohesion_push: float = 0.35
 ## 漫步选点：候选数与"靠近头牛"权重（乘以合群参数）。

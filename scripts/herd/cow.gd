@@ -6,8 +6,11 @@ extends CharacterBody3D
 enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 
 const DEFAULT_SPECIES := "res://data/species/yak.tres"
-## 非吃草时饱腹度的自然下降（每秒）。一天 1800 s 下约掉 0.36。
-const SATIETY_DECAY := 0.0002
+## 非吃草时饱腹度的自然下降（每秒）。
+## 定标：牛约有 39% 的时间不在吃草，一整天因此掉约 0.07——远小于正常放牧一天的摄入，
+## 所以吃得到草的牛会慢慢变饱，吃不到的才会掉。初版 0.0002 是按 480 s 的一天定的，
+## 换到 1800 s 后它一天要掉 0.36，比一头牛可能吃到的还多，牛必饿死。
+const SATIETY_DECAY := 0.0001
 ## 头牛挑草场的环形采样：内环避免选中脚下这一格（原地打转），外环用 leader_search_radius。
 const LEADER_PICK_MIN_RADIUS := 15.0
 const LEADER_PICK_SAMPLES := 12
