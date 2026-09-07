@@ -1,11 +1,27 @@
-[gd_scene load_steps=16 format=3 uid="uid://m1sandbox0001"]
+[gd_scene format=3 uid="uid://bgknu6jxafeqq"]
 
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_player"]
-[ext_resource type="Script" path="res://scripts/player/camera_rig.gd" id="2_camera"]
-[ext_resource type="Script" path="res://scripts/player/sling.gd" id="3_sling"]
-[ext_resource type="Script" path="res://scripts/herd/cow.gd" id="4_cow"]
-[ext_resource type="Script" path="res://scripts/world/day_light.gd" id="5_light"]
-[ext_resource type="Script" path="res://scripts/debug/debug_overlay.gd" id="6_debug"]
+[ext_resource type="Script" uid="uid://tp08avgu5kdh" path="res://scripts/player/player.gd" id="1_player"]
+[ext_resource type="Script" uid="uid://u56uvd1s1yvn" path="res://scripts/player/camera_rig.gd" id="2_camera"]
+[ext_resource type="Script" uid="uid://tj3takx56i82" path="res://scripts/player/sling.gd" id="3_sling"]
+[ext_resource type="Script" uid="uid://dx1jkn2v3h1nh" path="res://scripts/herd/cow.gd" id="4_cow"]
+[ext_resource type="Script" uid="uid://pki3yyyajqns" path="res://scripts/world/day_light.gd" id="5_light"]
+[ext_resource type="Script" uid="uid://1xfojdygo6jy" path="res://scripts/debug/debug_overlay.gd" id="6_debug"]
+[ext_resource type="Script" path="res://scripts/world/greybox_props.gd" id="7_props"]
+[ext_resource type="Shader" path="res://shaders/grid_ground.gdshader" id="8_grid"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.35, 0.55, 0.9, 1)
+sky_horizon_color = Color(0.75, 0.82, 0.9, 1)
+ground_horizon_color = Color(0.6, 0.6, 0.5, 1)
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 3
+tonemap_mode = 2
 
 [sub_resource type="BoxShape3D" id="ground_shape"]
 size = Vector3(400, 1, 400)
@@ -13,8 +29,14 @@ size = Vector3(400, 1, 400)
 [sub_resource type="PlaneMesh" id="ground_mesh"]
 size = Vector2(400, 400)
 
-[sub_resource type="StandardMaterial3D" id="ground_mat"]
-albedo_color = Color(0.55, 0.6, 0.3, 1)
+[sub_resource type="ShaderMaterial" id="ground_mat"]
+shader = ExtResource("8_grid")
+
+[sub_resource type="BoxMesh" id="nose_mesh"]
+size = Vector3(0.2, 0.2, 0.4)
+
+[sub_resource type="StandardMaterial3D" id="nose_mat"]
+albedo_color = Color(0.9, 0.3, 0.2, 1)
 
 [sub_resource type="CapsuleShape3D" id="player_shape"]
 radius = 0.35
@@ -33,95 +55,83 @@ size = Vector3(0.8, 1.5, 2.2)
 [sub_resource type="StandardMaterial3D" id="cow_mat"]
 albedo_color = Color(0.15, 0.12, 0.1, 1)
 
-[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
-sky_top_color = Color(0.35, 0.55, 0.9, 1)
-sky_horizon_color = Color(0.75, 0.82, 0.9, 1)
-ground_horizon_color = Color(0.6, 0.6, 0.5, 1)
+[node name="M1Sandbox" type="Node3D" unique_id=196823061]
 
-[sub_resource type="Sky" id="sky"]
-sky_material = SubResource("sky_mat")
-
-[sub_resource type="Environment" id="env"]
-background_mode = 2
-sky = SubResource("sky")
-ambient_light_source = 3
-tonemap_mode = 2
-
-[node name="M1Sandbox" type="Node3D"]
-
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1906498383]
 environment = SubResource("env")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=443336848]
 transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 20, 0)
 shadow_enabled = true
 script = ExtResource("5_light")
 
-[node name="Ground" type="StaticBody3D" parent="."]
-collision_layer = 1
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1672022813]
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=2135500818]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 shape = SubResource("ground_shape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=603926182]
 mesh = SubResource("ground_mesh")
 surface_material_override/0 = SubResource("ground_mat")
 
-[node name="Player" type="CharacterBody3D" parent="." groups=["player"]]
+[node name="Props" type="Node3D" parent="."]
+script = ExtResource("7_props")
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1164104346 groups=["player"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 collision_layer = 2
-collision_mask = 1
 script = ExtResource("1_player")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=1120176912]
 shape = SubResource("player_shape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Player"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Player" unique_id=1187457747]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.60012054, -0.24604821, 1.3274316)
 mesh = SubResource("player_mesh")
 
-[node name="Sling" type="Node3D" parent="Player"]
+[node name="Sling" type="Node3D" parent="Player" unique_id=287651537]
 script = ExtResource("3_sling")
 
-[node name="AimMarker" type="MeshInstance3D" parent="Player/Sling"]
+[node name="AimMarker" type="MeshInstance3D" parent="Player/Sling" unique_id=1495488408]
+transform = Transform3D(0.4, 0, 0, 0, 0.05, 0, 0, 0, 0.4, 0, 0, 0)
 top_level = true
 mesh = SubResource("player_mesh")
-transform = Transform3D(0.4, 0, 0, 0, 0.05, 0, 0, 0, 0.4, 0, 0, 0)
 
-[node name="Stone" type="MeshInstance3D" parent="Player/Sling"]
+[node name="Stone" type="MeshInstance3D" parent="Player/Sling" unique_id=28545970]
+transform = Transform3D(0.15, 0, 0, 0, 0.15, 0, 0, 0, 0.15, 0, 0, 0)
 top_level = true
 visible = false
 mesh = SubResource("player_mesh")
-transform = Transform3D(0.15, 0, 0, 0, 0.15, 0, 0, 0, 0.15, 0, 0, 0)
 
-[node name="CameraRig" type="Node3D" parent="."]
+[node name="CameraRig" type="Node3D" parent="." unique_id=761945846]
 script = ExtResource("2_camera")
 target_path = NodePath("../Player")
 
-[node name="Pitch" type="Node3D" parent="CameraRig"]
+[node name="Pitch" type="Node3D" parent="CameraRig" unique_id=1949623919]
 transform = Transform3D(1, 0, 0, 0, 0.766, 0.643, 0, -0.643, 0.766, 0, 0, 0)
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig/Pitch"]
+[node name="Camera3D" type="Camera3D" parent="CameraRig/Pitch" unique_id=258698627]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 12)
 fov = 60.0
 
-[node name="Cow" type="CharacterBody3D" parent="."]
+[node name="Cow" type="CharacterBody3D" parent="." unique_id=948913456]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 1, -8)
 collision_layer = 4
-collision_mask = 1
 script = ExtResource("4_cow")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Cow"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Cow" unique_id=1855444185]
 shape = SubResource("cow_shape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Cow"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Cow" unique_id=1393234781]
+transform = Transform3D(1, 0, 0, 0, 0.51545644, -0.8569158, 0, 0.8569158, 0.51545644, 0, 0, 0)
 mesh = SubResource("cow_mesh")
 surface_material_override/0 = SubResource("cow_mat")
 
-[node name="DebugOverlay" type="CanvasLayer" parent="."]
+[node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1183399508]
 script = ExtResource("6_debug")
 
-[node name="Label" type="Label" parent="DebugOverlay"]
+[node name="Label" type="Label" parent="DebugOverlay" unique_id=1253102844]
 offset_left = 12.0
 offset_top = 12.0
 offset_right = 800.0

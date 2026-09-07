@@ -15,5 +15,5 @@ func _process(_delta: float) -> void:
 		var p: Node3D = get_tree().get_first_node_in_group("player")
 		var d: float = cow.global_position.distance_to(p.global_position) if p else 0.0
 		lines.append("%s  %s  fear=%.2f  dist=%.1f" % [cow.name, cow.state_name(), cow.fear, d])
-	lines.append("WASD 移动  Shift 跑  Q/E 或右键拖拽转视角  左键甩石  T 快进  F12 隐藏")
+	lines.append("WASD 移动  Shift 跑  Q/E 或右键拖拽转视角  左键甩石  Tab 远/近  T 快进  F12 隐藏")
 	_label.text = "\n".join(lines)
