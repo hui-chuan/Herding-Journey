@@ -15,7 +15,7 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT }
 @export_group("运动")
 @export var wander_speed: float = 0.8
 @export var follow_speed: float = 1.2
-@export var flee_speed: float = 4.5
+@export var flee_speed: float = 3.5
 @export var turn_speed: float = 4.0
 ## 平静态下（含被推）的速度上限；惊跑时上限为 flee_speed。
 @export var calm_speed_cap: float = 2.5
@@ -27,7 +27,7 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT }
 @export var wander_min_distance: float = 3.0
 @export var wander_max_distance: float = 8.0
 ## 一次惊跑最多跑这么远，跑到就停下张望。
-@export var flee_max_distance: float = 18.0
+@export var flee_max_distance: float = 9.0
 
 @export_group("牛群")
 @export var leader_path: NodePath
@@ -39,11 +39,11 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT }
 @export var separation_push: float = 2.0
 @export var cohesion_push: float = 0.45
 @export var contagion_radius: float = 8.0
-@export var contagion_fear: float = 0.4
+@export var contagion_fear: float = 0.3
 
 @export_group("惊吓 (BEHAVIOR §1.1)")
 @export var fear_threshold: float = 0.5
-@export var fear_half_life: float = 8.0
+@export var fear_half_life: float = 6.0
 
 @export_group("身位施压 (BEHAVIOR §6.1)")
 @export var pressure_radius: float = 6.0
@@ -160,7 +160,7 @@ func _enter(s: State) -> void:
 			_has_spread_fear = false
 			_state_time_left = randf_range(8.0, 20.0)
 		State.FLEE:
-			_state_time_left = randf_range(3.0, 5.0)
+			_state_time_left = randf_range(1.5, 3.0)
 			_flee_start = global_position
 			_flee_dir = Vector3.ZERO
 			if _has_threat:
@@ -173,7 +173,10 @@ func _enter(s: State) -> void:
 			if previous != State.FLEE:
 				_spread_fear()
 		State.ALERT:
-			_state_time_left = randf_range(5.0, 15.0)
+			_state_time_left = randf_range(3.0, 8.0)
+			# 跑过一段就把惊吓"跑掉"一部分，否则警觉时仍高于阈值会立刻再次惊跑。
+			if previous == State.FLEE:
+				fear = minf(fear, fear_threshold * boldness * 0.45)
 	_update_color()
 
 func _on_state_timeout() -> void:
@@ -204,7 +207,7 @@ func _on_state_timeout() -> void:
 			if fear < fear_threshold * boldness * 0.5:
 				_enter(State.GRAZE)
 			else:
-				_state_time_left = 3.0
+				_state_time_left = 2.0
 
 func _pick_wander_target() -> void:
 	var home := Clock.homing_urge()

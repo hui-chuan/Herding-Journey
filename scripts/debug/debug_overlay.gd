@@ -7,6 +7,8 @@ var _shot_timer: float = 2.0
 var _settlement_timer: float = 0.0
 var _log_positions: bool = false
 var _log_timer: float = 0.0
+var _test_sling: bool = false
+var _test_sling_timer: float = 3.0
 var _settlement_text: String = ""
 
 func _ready() -> void:
@@ -14,6 +16,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--time="):
 			Clock.time_of_day = float(a.trim_prefix("--time="))
+		if a == "--test-sling":
+			_test_sling = true
 		if a == "--log-positions":
 			_log_positions = true
 		if a.begins_with("--shot-delay="):
@@ -22,10 +26,24 @@ func _ready() -> void:
 			_shot_path = a.trim_prefix("--screenshot=")
 
 func _process(delta: float) -> void:
+	if _test_sling:
+		_test_sling_timer -= delta
+		if _test_sling_timer <= 0.0:
+			_test_sling = false
+			var leader: Node3D = null
+			for c in get_tree().get_nodes_in_group("cows"):
+				if not c.is_leader:
+					leader = c
+					break
+			if leader:
+				var point: Vector3 = leader.global_position + Vector3(0.8, 0, 0)
+				print("TEST sling lands at %s" % point)
+				for cow in get_tree().get_nodes_in_group("cows"):
+					cow.apply_sling_impact(point, 4.0, 4.0, 0.7)
 	if _log_positions:
 		_log_timer -= delta
 		if _log_timer <= 0.0:
-			_log_timer = 2.0
+			_log_timer = 1.0
 			var parts: PackedStringArray = []
 			for cow in get_tree().get_nodes_in_group("cows"):
 				var gp: Vector3 = cow.global_position
