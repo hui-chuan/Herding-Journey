@@ -1,5 +1,6 @@
 ## 畜栏：四边围栏（带碰撞），东侧一道门。门前有牛或人时自动打开，走空后关上。
-## 围栏区域判定（归栏）仍以 center 与 size 为准，见 Cow.is_in_pen。
+## 归栏判定也在这里（DAY_CYCLE §2.2）：只有一处知道"什么算在栏里"。
+class_name Pen
 extends Node3D
 
 @export var size: float = 20.0
@@ -23,6 +24,7 @@ var _mat_post: StandardMaterial3D
 var _mat_rail: StandardMaterial3D
 
 func _ready() -> void:
+	add_to_group("pen")
 	_mat_post = StandardMaterial3D.new()
 	_mat_post.albedo_color = WOOD_DARK
 	_mat_post.roughness = 1.0
@@ -62,6 +64,17 @@ func _process(delta: float) -> void:
 
 func is_gate_open() -> bool:
 	return _gate_t > 0.5
+
+## 归栏判定（DAY_CYCLE §3.4）。半边长按围栏尺寸算，围栏挪位置或改大小都不用改别处。
+func contains(world_pos: Vector3) -> bool:
+	var flat := world_pos - global_position
+	flat.y = 0.0
+	var h := size * 0.5
+	return absf(flat.x) <= h and absf(flat.z) <= h
+
+func cows_inside() -> Array:
+	return get_tree().get_nodes_in_group("cows").filter(
+		func(c: Node3D) -> bool: return contains(c.global_position))
 
 ## 一段直线围栏：等距立柱 + 两根横杆 + 一块整体碰撞板。
 func _build_side(a: Vector3, b: Vector3) -> void:

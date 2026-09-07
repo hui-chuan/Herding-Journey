@@ -20,13 +20,13 @@ project.godot                 Forward+ / Jolt / InputMap / 自动加载 Clock
 scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、草场、玩家、牛群生成器、调试层（牛不再在场景里）
 shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 = 草场格尺寸）
 shaders/grass.gdshader        草丛：随风摆动，按实例变色，法线统一朝上
-scripts/autoload/clock.gd     全局时钟：一天 480 s（**待改 1800 s**，D4），五时段（**待按 DAY_CYCLE §1.1 重划**），homing_urge()
+scripts/autoload/clock.gd     全局时钟：一天 1800 s，五时段（DAY_CYCLE §1.1），60 s 天黑宽限，homing_urge()
 scripts/world/day_light.gd    太阳角度与色温随时钟变化
 scripts/world/grassland.gd    草场网格 40×40（Image RGF：R 草量 G 退化）：查询、消耗、挑草场、每日恢复、存档
 scripts/world/grass_field.gd  MultiMesh 铺 12 万丛草
 scripts/world/mountains.gd    一圈低多边形远山
 scripts/world/greybox_props.gd 散落石块（StaticBody3D，带碰撞）
-scripts/world/pen.gd          畜栏：四边围栏带碰撞，东侧自动门
+scripts/world/pen.gd          畜栏：四边围栏带碰撞，东侧自动门；归栏判定 contains()/cows_inside()
 scripts/player/player.gd      步行 2 / 奔跑 5 m/s；driving 吆喝开关
 scripts/player/player_body.gd 牧人外观（原生几何体拼）
 scripts/player/camera_rig.gd  固定 40° 俯角，水平可转，Tab 远近 + 静止 3 s 自动远观
@@ -96,9 +96,10 @@ $G --headless --path . --quit-after 900 -- --test-save                      # �
   并修正了按 480 s 的一天定的 `SATIETY_DECAY`（0.0002→0.0001，否则牛必饿死）。
   10 天实测饱腹度 0.50→0.32 后趋平，系统收敛。定标经过见 `GRASSLAND.md` §2.4、群体参数见 `Herd_BEHAVIOR.md` §5。
 - 草量可视化（P1）未做：`grassland.texture()` 已备好，`grass.gdshader` 尚未接。
-- 一天仍是 480 s，D4 已改为 1800 s；时段边界与 `homing_urge()` 曲线待按 `DAY_CYCLE.md` §1.1/§3.2 重定。
-- 天黑宽限（60 s，D17）未做。
-- 走失、死亡、存档、正式结算未做；结算目前只是调试层的一行文字，6 s 后自动进入次日。规格已定：`DAY_CYCLE.md` §4–§5。
+- ~~一天仍是 480 s、时段边界与归栏曲线未按 DAY_CYCLE 重定~~ → **已完成**（1800 s，新五时段，t² 归栏曲线到 0.95 满值）。
+- ~~天黑宽限未做~~ → **已完成**：到 1.0 进宽限，60 s 或全部归栏则结算，`grace_started` / `day_ended` 两个信号。
+- 结算仍是调试层的一行文字，正式结算界面（DAY_CYCLE §4）未做。
+- 走失、死亡、存档未做。规格已定：`DAY_CYCLE.md` §4–§5。
 - ~~`cow.gd` 的 @export 抽成 `SpeciesData`~~ → 已完成。
 - ~~牛还不是预制体、`CowData` 未做~~ → **已完成**。`scenes/cow.tscn` + `CowData`，
   `HerdManager` 按数据生成；存档往返已验证（5 头牛的性格/头牛/外观种子/位置与 1600 格草场全部一致，JSON 约 36 KB）。

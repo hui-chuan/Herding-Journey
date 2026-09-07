@@ -33,13 +33,13 @@ var follow_distance_scale: float = 1.0
 
 @export_group("牛群")
 @export var leader_path: NodePath
-@export var pen_center := Vector3(-30.0, 0.0, 30.0)
 
 var state: State = State.GRAZE
 var fear: float = 0.0
 ## 饱腹度 0–1（BEHAVIOR §1.1）。吃草上升，其余时间缓慢下降。
 var satiety: float = 0.5
 var _grassland: Grassland
+var _pen: Pen
 ## 头牛上次挑草场的方向，给漂移一点惯性（GRASSLAND §3）。
 var _drift_dir: Vector3 = Vector3.ZERO
 var _state_time_left: float = 0.0
@@ -75,6 +75,7 @@ func _ready() -> void:
 		data.position = global_position
 	apply_data()
 	_grassland = get_tree().get_first_node_in_group("grassland") as Grassland
+	_pen = get_tree().get_first_node_in_group("pen") as Pen
 	_noise.seed = randi()
 	_noise.frequency = 0.15
 	_resolve_leader()
@@ -232,7 +233,7 @@ func _on_state_timeout() -> void:
 func _pick_wander_target() -> void:
 	var home := Clock.homing_urge()
 	if is_leader and home > 0.05:
-		var to_pen := pen_center - global_position
+		var to_pen := pen_position() - global_position
 		to_pen.y = 0.0
 		var step := randf_range(6.0, 14.0)
 		_wander_target = global_position + to_pen.normalized() * step * lerpf(0.5, 1.8, home)
@@ -366,10 +367,13 @@ func refresh_marker() -> void:
 func state_name() -> String:
 	return State.keys()[state]
 
+## 围栏中心。没有围栏时退回原点，灰盒里也不会崩。
+func pen_position() -> Vector3:
+	return _pen.global_position if _pen != null else Vector3.ZERO
+
+## 归栏判定交给 Pen（DAY_CYCLE §2.2）：只有一处知道"什么算在栏里"。
 func is_in_pen() -> bool:
-	var flat := global_position - pen_center
-	flat.y = 0.0
-	return absf(flat.x) <= 10.0 and absf(flat.z) <= 10.0
+	return _pen != null and _pen.contains(global_position)
 
 func _resolve_leader() -> void:
 	if is_leader:
@@ -480,7 +484,7 @@ func _best_grass_dir() -> Vector3:
 	var bias_dir := Vector3.ZERO
 	var home := Clock.homing_urge()
 	if home > 0.0:
-		bias_dir = pen_center - global_position
+		bias_dir = pen_position() - global_position
 		bias_dir.y = 0.0
 		bias_dir = bias_dir.normalized()
 	var target := _grassland.best_cell_near(

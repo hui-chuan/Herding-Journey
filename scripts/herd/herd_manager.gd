@@ -7,7 +7,6 @@ const COW_SCENE := preload("res://scenes/cow.tscn")
 @export var herd_size: int = 5
 @export var spawn_center := Vector3(8.0, 1.0, -8.0)
 @export var spawn_radius: float = 7.0
-@export var pen_center := Vector3(-30.0, 0.0, 30.0)
 @export var seed: int = 21
 ## 全群共用的种类参数（T16）。
 @export var species: SpeciesData
@@ -62,7 +61,6 @@ func spawn(d: CowData) -> Cow:
 	# 入树前设好，_ready 才能按这份数据初始化（模板 duplicate 时代踩过的坑）。
 	cow.data = d
 	cow.species = d.species if d.species != null else species
-	cow.pen_center = pen_center
 	cow.name = "Cow%d" % d.id
 	add_child(cow)
 	cow.global_position = d.position

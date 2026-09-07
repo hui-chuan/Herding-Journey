@@ -20,6 +20,7 @@ var _settlement_text: String = ""
 
 func _ready() -> void:
 	Clock.day_ended.connect(_on_day_ended)
+	Clock.grace_started.connect(_on_grace_started)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--time="):
 			Clock.time_of_day = float(a.trim_prefix("--time="))
@@ -171,7 +172,8 @@ func _process(delta: float) -> void:
 	var lines: PackedStringArray = []
 	var player := get_tree().get_first_node_in_group("player")
 	var drive_txt := "  [吆喝]" if player and player.get("driving") == true else ""
-	lines.append("day %d  t=%.2f  %s  homing=%.2f%s" % [Clock.day, Clock.time_of_day, Clock.Phase.keys()[Clock.phase], Clock.homing_urge(), drive_txt])
+	var grace_txt := "  宽限 %.0fs" % Clock.grace_left if Clock.in_grace else ""
+	lines.append("day %d  t=%.2f  %s  homing=%.2f%s%s" % [Clock.day, Clock.time_of_day, Clock.Phase.keys()[Clock.phase], Clock.homing_urge(), drive_txt, grace_txt])
 	if _settlement_text != "":
 		lines.append(_settlement_text)
 	for cow in get_tree().get_nodes_in_group("cows"):
@@ -183,6 +185,10 @@ func _process(delta: float) -> void:
 	lines.append("WASD 移动  Shift 跑  Q/E 或右键拖拽转视角  左键甩石  F 吆喝  Tab 远/近  T 快进  F12 隐藏")
 	_label.text = "\n".join(lines)
 
+func _on_grace_started() -> void:
+	_settlement_text = "天黑了，还有 %d 秒宽限" % int(Clock.grace_sec)
+	print("GRACE started t=%.3f" % Clock.time_of_day)
+
 func _on_day_ended(day: int) -> void:
 	var total := 0
 	var penned := 0
@@ -193,6 +199,7 @@ func _on_day_ended(day: int) -> void:
 	var milk := penned * 2
 	var wool := penned
 	_settlement_text = "nightfall day %d  returned %d/%d  milk +%d  wool +%d  next dawn soon" % [day, penned, total, milk, wool]
+	print("SETTLE day=%d penned=%d/%d grace_left=%.1f" % [day, penned, total, Clock.grace_left])
 	_settlement_timer = 6.0
 
 
