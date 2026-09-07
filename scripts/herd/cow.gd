@@ -41,7 +41,14 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 @export var follow_stop_distance: float = 7.0
 @export var separation_radius: float = 3.5
 @export var separation_push: float = 2.0
-@export var cohesion_push: float = 0.45
+## 聚合：离头牛超过 cohesion_start 起有拉力，到 follow_start_distance 时达到 cohesion_push。
+@export var cohesion_start: float = 4.0
+@export var cohesion_push: float = 0.9
+## 头牛受群体质心的轻微牵引，不会自己走丢。
+@export var leader_cohesion_push: float = 0.35
+## 漫步选点：候选数与"靠近头牛"权重（乘以合群参数）。
+@export var wander_samples: int = 6
+@export var wander_cohesion_weight: float = 1.0
 @export var contagion_radius: float = 8.0
 @export var contagion_fear: float = 0.3
 
@@ -247,7 +254,22 @@ func _pick_wander_target() -> void:
 			var mixed := noise_dir.lerp(grass_bias, 0.55).normalized()
 			angle = atan2(mixed.z, mixed.x)
 	var dist := clampf(randf_range(wander_min_distance, wander_max_distance) * restlessness, wander_min_distance, wander_max_distance)
-	_wander_target = global_position + Vector3(cos(angle), 0.0, sin(angle)) * dist
+	# 以噪声方向为中心撒若干候选点，按"离头牛/群近"加权抽取（BEHAVIOR §1.2）。
+	var anchor := _cohesion_anchor()
+	var best := global_position + Vector3(cos(angle), 0.0, sin(angle)) * dist
+	var best_score := -INF
+	for i in wander_samples:
+		var a := angle + randf_range(-PI * 0.75, PI * 0.75)
+		var cand := global_position + Vector3(cos(a), 0.0, sin(a)) * dist * randf_range(0.6, 1.0)
+		var score := randf() * 0.5
+		if anchor != Vector3.INF:
+			var d_now := _flat_distance_to(anchor)
+			var d_cand := cand.distance_to(anchor)
+			score += (d_now - d_cand) / dist * wander_cohesion_weight * sociability
+		if score > best_score:
+			best_score = score
+			best = cand
+	_wander_target = best
 
 func _decay_fear(delta: float) -> void:
 	fear *= pow(0.5, delta / fear_half_life)
@@ -375,9 +397,34 @@ func _herd_push() -> Vector3:
 		var to_leader := _leader.global_position - global_position
 		to_leader.y = 0.0
 		var d := to_leader.length()
-		if d > follow_stop_distance:
-			push += to_leader.normalized() * minf(1.0, d / follow_start_distance) * cohesion_push * sociability
+		if d > cohesion_start:
+			var t := clampf((d - cohesion_start) / maxf(0.1, follow_start_distance - cohesion_start), 0.0, 1.0)
+			push += to_leader.normalized() * t * cohesion_push * sociability
+	elif is_leader:
+		var centroid := _herd_centroid()
+		if centroid != Vector3.INF:
+			var to_c := centroid - global_position
+			to_c.y = 0.0
+			if to_c.length() > cohesion_start:
+				push += to_c.normalized() * leader_cohesion_push
 	return push
+
+## 聚合的参照点：普通牛看头牛，头牛看群体质心。
+func _cohesion_anchor() -> Vector3:
+	if is_leader:
+		return _herd_centroid()
+	if _leader != null and is_instance_valid(_leader):
+		return _leader.global_position
+	return Vector3.INF
+
+func _herd_centroid() -> Vector3:
+	var sum := Vector3.ZERO
+	var n := 0
+	for node in get_tree().get_nodes_in_group("cows"):
+		if node != self:
+			sum += (node as Node3D).global_position
+			n += 1
+	return sum / n if n > 0 else Vector3.INF
 
 func _spread_fear() -> void:
 	if _has_spread_fear:
