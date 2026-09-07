@@ -1,6 +1,6 @@
 # STATUS.md — 代码现状
 
-更新：2026-09-07。记录"代码里现在有什么"，供接手与复盘。设计意图看 PRD 与 DECISIONS，行为规格看 Herd_BEHAVIOR。
+更新：2026-09-07（设计文档补齐，M3 待办见文末）。记录"代码里现在有什么"，供接手与复盘。设计意图看 PRD 与 DECISIONS，行为规格看 Herd_BEHAVIOR。
 
 仓库：https://github.com/hui-chuan/Herding-Journey · 引擎：Godot 4.7.2 stable
 
@@ -20,7 +20,7 @@ project.godot                 Forward+ / Jolt / InputMap / 自动加载 Clock
 scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、玩家、模板牛、牛群生成器、调试层
 shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 = 草场格尺寸）
 shaders/grass.gdshader        草丛：随风摆动，按实例变色，法线统一朝上
-scripts/autoload/clock.gd     全局时钟：一天 480 s，五时段，homing_urge() 归栏欲望曲线
+scripts/autoload/clock.gd     全局时钟：一天 480 s（**待改 1800 s**，D4），五时段（**待按 DAY_CYCLE §1.1 重划**），homing_urge()
 scripts/world/day_light.gd    太阳角度与色温随时钟变化
 scripts/world/grass_field.gd  MultiMesh 铺 12 万丛草
 scripts/world/mountains.gd    一圈低多边形远山
@@ -30,7 +30,9 @@ scripts/player/player.gd      步行 2 / 奔跑 5 m/s；driving 吆喝开关
 scripts/player/player_body.gd 牧人外观（原生几何体拼）
 scripts/player/camera_rig.gd  固定 40° 俯角，水平可转，Tab 远近 + 静止 3 s 自动远观
 scripts/player/sling.gd       乌尔朵：鼠标瞄准落点，4–40 m，抛物线 1 s，冷却 2 s
-scripts/herd/cow.gd           牛：状态机、性格、惊吓、群体力、区域压力、头牛意图
+scripts/data/species_data.gd  种类行为参数 Resource（T16）：运动、群体力、惊吓、施压响应、草场
+data/species/yak.tres         牦牛的一份参数，全群共用；调参只改这个文件
+scripts/herd/cow.gd           牛：状态机、性格、惊吓、群体力、区域压力、头牛意图（参数读 species）
 scripts/herd/yak_body.gd      牦牛外观，花色按种子
 scripts/herd/herd_manager.gd  用模板牛生成起始群（5 头，1 头头牛），分配性格
 scripts/debug/debug_overlay.gd 调试层与命令行参数
@@ -50,7 +52,8 @@ scripts/debug/debug_overlay.gd 调试层与命令行参数
 
 GRAZE / WANDER / REST / FOLLOW / FLEE / ALERT / NUDGE。调试层开着时每头牛头顶有状态小球：黄 = 头牛吃草，黑 = 吃草，蓝 = 跟随，红 = 惊跑，橙黄 = 警觉，橙 = 挪开。
 
-关键参数（均为 `@export`，在编辑器检查器里可调）：
+关键参数**已全部移入 `data/species/yak.tres`**（`SpeciesData`，T16），改一处全群生效。
+牛身上只留性格四参数、`is_leader`、`follow_distance_scale`（个体的跟随距离倍率）与 `pen_center`。
 
 | 组 | 参数 | 值 |
 | --- | --- | --- |
@@ -81,8 +84,12 @@ $G --headless --path . --quit-after 1500 -- --log-positions --test-drive  # 玩�
 
 ## 已知缺口
 
-- 草场数据层（BEHAVIOR §4）未做，头牛"挑草场"目前用一个假的草量场（离原点越近越高）。
-- 走失、存档、正式结算未做；结算目前只是调试层的一行文字，6 s 后自动进入次日。
+- 草场数据层未做，头牛"挑草场"目前用一个假的草量场（离原点越近越高）。规格已定：`GRASSLAND.md`。
+- 一天仍是 480 s，D4 已改为 1800 s；时段边界与 `homing_urge()` 曲线待按 `DAY_CYCLE.md` §1.1/§3.2 重定。
+- 天黑宽限（60 s，D17）未做。
+- 走失、死亡、存档、正式结算未做；结算目前只是调试层的一行文字，6 s 后自动进入次日。规格已定：`DAY_CYCLE.md` §4–§5。
+- ~~`cow.gd` 的 @export 抽成 `SpeciesData`~~ → 已完成。
+- 牛还不是预制体（靠 duplicate 模板），`CowData` 未做。重构路线见 `ARCHITECTURE.md` §6。
 - 地形是平的；起伏与草量可视化留到 M3 处理 T14 时一起做。
 - 人和牛没有动画。
 - 落石的"闷响让其他牛抬头"未做。

@@ -8,6 +8,8 @@ extends Node
 @export var spawn_radius: float = 7.0
 @export var pen_center := Vector3(-30.0, 0.0, 30.0)
 @export var seed: int = 21
+## 全群共用的种类参数（T16）。留空则各头牛自己回落到 yak.tres。
+@export var species: SpeciesData
 
 func _ready() -> void:
 	call_deferred("_spawn_herd")
@@ -41,11 +43,14 @@ func _configure_cow(cow: Cow, index: int, rng: RandomNumberGenerator, leader: bo
 	cow.rotation.y = rng.randf() * TAU
 	cow.is_leader = leader
 	cow.pen_center = pen_center
+	if species != null:
+		cow.species = species
 	cow.boldness = rng.randf_range(1.2, 1.5) if leader else rng.randf_range(0.65, 1.35)
 	cow.greed = rng.randf_range(0.75, 1.25)
 	cow.restlessness = rng.randf_range(0.75, 1.25)
 	cow.sociability = rng.randf_range(0.75, 1.25)
-	cow.follow_start_distance = 15.0 if leader else rng.randf_range(10.0, 15.0)
+	# 跟随触发距离改用倍率（种类基准 13 m）：头牛略宽松，普通牛 0.77–1.15 倍。
+	cow.follow_distance_scale = 1.15 if leader else rng.randf_range(0.77, 1.15)
 	var body := cow.get_node_or_null("Body")
 	if body != null:
 		body.seed = seed + index * 17

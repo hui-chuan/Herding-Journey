@@ -5,6 +5,8 @@ extends CharacterBody3D
 
 enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 
+const DEFAULT_SPECIES := "res://data/species/yak.tres"
+
 @export_group("性格 (BEHAVIOR §2)")
 @export var boldness: float = 1.0
 @export var greed: float = 1.0
@@ -12,59 +14,15 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 @export var sociability: float = 1.0
 @export var is_leader: bool = false
 
-@export_group("运动")
-@export var wander_speed: float = 1.3
-@export var follow_speed: float = 1.7
-@export var flee_speed: float = 3.5
-@export var turn_speed: float = 4.0
-## 平静态下（含被推）的速度上限；惊跑时上限为 flee_speed。
-@export var calm_speed_cap: float = 3.0
-## 目标速度低于此值视为停下，避免蠕动。
-@export var min_move_speed: float = 0.25
-@export var accel_calm: float = 3.0
-@export var accel_flee: float = 8.0
-@export var decel: float = 3.5
-@export var wander_min_distance: float = 4.0
-@export var wander_max_distance: float = 12.0
-## 一次惊跑最多跑这么远，跑到就停下张望。
-@export var flee_max_distance: float = 9.0
-## 被石头落点"挪开"：小跑背离落点，距离随落点远近在 [min,max] 之间。
-@export var nudge_speed: float = 2.5
-@export var nudge_min_distance: float = 1.5
-@export var nudge_max_distance: float = 5.0
+@export_group("种类 (DECISIONS T16)")
+## 全部行为参数的来源。同种共享一份 .tres，调参只改那一个文件。
+@export var species: SpeciesData
+## 个体的跟随触发距离倍率：让"爱走远的牛"更晚才去追头牛。
+@export var follow_distance_scale: float = 1.0
 
 @export_group("牛群")
 @export var leader_path: NodePath
 @export var pen_center := Vector3(-30.0, 0.0, 30.0)
-@export var leader_search_radius: float = 40.0
-@export var follow_start_distance: float = 13.0
-@export var follow_stop_distance: float = 7.0
-@export var separation_radius: float = 3.5
-@export var separation_push: float = 2.0
-## 聚合：离头牛超过 cohesion_start 起有拉力，到 follow_start_distance 时达到 cohesion_push。
-@export var cohesion_start: float = 4.0
-@export var cohesion_push: float = 0.9
-## 头牛受群体质心的轻微牵引，不会自己走丢。
-@export var leader_cohesion_push: float = 0.35
-## 漫步选点：候选数与"靠近头牛"权重（乘以合群参数）。
-@export var wander_samples: int = 6
-@export var wander_cohesion_weight: float = 1.0
-@export var contagion_radius: float = 8.0
-@export var contagion_fear: float = 0.3
-
-@export_group("惊吓 (BEHAVIOR §1.1)")
-@export var fear_threshold: float = 0.5
-@export var fear_half_life: float = 6.0
-
-@export_group("身位施压 (BEHAVIOR §6.1)")
-## 不吆喝：人走近只是轻微让开，不加惊吓；跑动才有惊吓。
-@export var pressure_radius: float = 4.0
-@export var pressure_push_walk: float = 0.5
-@export var pressure_push_run: float = 2.0
-@export var pressure_fear_run: float = 0.25
-## 吆喝：以玩家为源点的区域压力，半径内的牛背离玩家挪开，惊吓缓慢累积。
-@export var drive_radius: float = 8.0
-@export var drive_fear_per_sec: float = 0.08
 
 var state: State = State.GRAZE
 var fear: float = 0.0
@@ -87,6 +45,8 @@ var _has_spread_fear: bool = false
 
 func _ready() -> void:
 	add_to_group("cows")
+	if species == null:
+		species = load(DEFAULT_SPECIES) as SpeciesData
 	# duplicate 出来的牛共用材质资源，这里各自复制一份，否则全群同色。
 	var shared := _mesh.get_surface_override_material(0)
 	if shared != null:
@@ -102,7 +62,7 @@ func _physics_process(delta: float) -> void:
 	_noise_t += delta * 0.05
 	_decay_fear(delta)
 	_apply_player_pressure(delta)
-	if state != State.FLEE and fear >= fear_threshold * boldness:
+	if state != State.FLEE and fear >= species.fear_threshold * boldness:
 		_enter(State.FLEE)
 
 	_resolve_leader()
@@ -116,14 +76,14 @@ func _physics_process(delta: float) -> void:
 			if to_target.length() < 0.5:
 				_enter(State.GRAZE)
 			else:
-				desired = to_target.normalized() * wander_speed
+				desired = to_target.normalized() * species.wander_speed
 		State.FOLLOW:
 			desired = _follow_velocity()
 		State.FLEE:
-			if _flat_distance_to(_flee_start) >= flee_max_distance:
+			if _flat_distance_to(_flee_start) >= species.flee_max_distance:
 				_enter(State.ALERT)
 			else:
-				desired = _flee_dir * flee_speed
+				desired = _flee_dir * species.flee_speed
 		State.ALERT:
 			desired = Vector3.ZERO
 		State.NUDGE:
@@ -132,10 +92,10 @@ func _physics_process(delta: float) -> void:
 			if to_nudge.length() < 0.4:
 				_enter(State.GRAZE)
 			else:
-				desired = to_nudge.normalized() * nudge_speed
+				desired = to_nudge.normalized() * species.nudge_speed
 
 	# 最小速度只裁剪状态自身的意图，推力（分离、聚合、施压）不受此限。
-	if desired.length() < min_move_speed:
+	if desired.length() < species.min_move_speed:
 		desired = Vector3.ZERO
 	desired += _herd_push()
 	desired += _external_push
@@ -143,13 +103,13 @@ func _physics_process(delta: float) -> void:
 	_external_push = _external_push.move_toward(Vector3.ZERO, 5.0 * delta)
 
 	# 速度上限 + 分开的加减速。
-	var cap := flee_speed if state == State.FLEE else calm_speed_cap
+	var cap: float = species.flee_speed if state == State.FLEE else species.calm_speed_cap
 	if desired.length() > cap:
 		desired = desired.normalized() * cap
 	var current := Vector3(velocity.x, 0.0, velocity.z)
-	var rate := decel
+	var rate: float = species.decel
 	if desired.length() > current.length():
-		rate = accel_flee if (state == State.FLEE or pushed) else accel_calm
+		rate = species.accel_flee if (state == State.FLEE or pushed) else species.accel_calm
 	var next := current.move_toward(desired, rate * delta)
 	velocity.x = next.x
 	velocity.z = next.z
@@ -157,7 +117,7 @@ func _physics_process(delta: float) -> void:
 
 	var flat := Vector3(velocity.x, 0.0, velocity.z)
 	if flat.length_squared() > 0.04:
-		rotation.y = lerp_angle(rotation.y, atan2(-flat.x, -flat.z), turn_speed * delta)
+		rotation.y = lerp_angle(rotation.y, atan2(-flat.x, -flat.z), species.turn_speed * delta)
 
 	move_and_slide()
 
@@ -201,7 +161,7 @@ func _enter(s: State) -> void:
 			_state_time_left = randf_range(3.0, 8.0)
 			# 跑过一段就把惊吓"跑掉"一部分，否则警觉时仍高于阈值会立刻再次惊跑。
 			if previous == State.FLEE:
-				fear = minf(fear, fear_threshold * boldness * 0.45)
+				fear = minf(fear, species.fear_threshold * boldness * 0.45)
 	_update_color()
 
 func _on_state_timeout() -> void:
@@ -231,7 +191,7 @@ func _on_state_timeout() -> void:
 		State.NUDGE:
 			_enter(State.GRAZE)
 		State.ALERT:
-			if fear < fear_threshold * boldness * 0.5:
+			if fear < species.fear_threshold * boldness * 0.5:
 				_enter(State.GRAZE)
 			else:
 				_state_time_left = 2.0
@@ -252,26 +212,26 @@ func _pick_wander_target() -> void:
 			var noise_dir := Vector3(cos(angle), 0.0, sin(angle))
 			var mixed := noise_dir.lerp(grass_bias, 0.55).normalized()
 			angle = atan2(mixed.z, mixed.x)
-	var dist := clampf(randf_range(wander_min_distance, wander_max_distance) * restlessness, wander_min_distance, wander_max_distance)
+	var dist := clampf(randf_range(species.wander_min_distance, species.wander_max_distance) * restlessness, species.wander_min_distance, species.wander_max_distance)
 	# 以噪声方向为中心撒若干候选点，按"离头牛/群近"加权抽取（BEHAVIOR §1.2）。
 	var anchor := _cohesion_anchor()
 	var best := global_position + Vector3(cos(angle), 0.0, sin(angle)) * dist
 	var best_score := -INF
-	for i in wander_samples:
+	for i in species.wander_samples:
 		var a := angle + randf_range(-PI * 0.75, PI * 0.75)
 		var cand := global_position + Vector3(cos(a), 0.0, sin(a)) * dist * randf_range(0.6, 1.0)
 		var score := randf() * 0.5
 		if anchor != Vector3.INF:
 			var d_now := _flat_distance_to(anchor)
 			var d_cand := cand.distance_to(anchor)
-			score += (d_now - d_cand) / dist * wander_cohesion_weight * sociability
+			score += (d_now - d_cand) / dist * species.wander_cohesion_weight * sociability
 		if score > best_score:
 			best_score = score
 			best = cand
 	_wander_target = best
 
 func _decay_fear(delta: float) -> void:
-	fear *= pow(0.5, delta / fear_half_life)
+	fear *= pow(0.5, delta / species.fear_half_life)
 
 func _apply_player_pressure(delta: float) -> void:
 	if _player == null:
@@ -283,18 +243,18 @@ func _apply_player_pressure(delta: float) -> void:
 		return
 	var driving: bool = _player.get("driving") == true
 	if driving:
-		apply_area_pressure(_player.global_position, drive_radius, drive_fear_per_sec * delta)
+		apply_area_pressure(_player.global_position, species.drive_radius, species.drive_fear_per_sec * delta)
 		return
-	if d > pressure_radius:
+	if d > species.pressure_radius:
 		return
 	var speed: float = _player.horizontal_speed()
 	if speed < 0.1:
 		return
 	var running: bool = speed > 3.0
-	var falloff := 1.0 - d / pressure_radius
-	_external_push += away.normalized() * (pressure_push_run if running else pressure_push_walk) * falloff
+	var falloff: float = 1.0 - d / species.pressure_radius
+	_external_push += away.normalized() * (species.pressure_push_run if running else species.pressure_push_walk) * falloff
 	if running:
-		add_fear(pressure_fear_run * falloff * delta, _player.global_position)
+		add_fear(species.pressure_fear_run * falloff * delta, _player.global_position)
 
 ## 惊吓来源记为位置而非方向，进入惊跑时才据此算背离方向。
 func add_fear(amount: float, threat_pos: Vector3) -> void:
@@ -313,9 +273,9 @@ func apply_area_pressure(source: Vector3, radius: float, fear_amount: float) -> 
 	var falloff := 1.0 - d / radius
 	var dir := away.normalized() if d > 0.01 else Vector3.FORWARD
 	add_fear(fear_amount * falloff, source)
-	if state == State.FLEE or fear >= fear_threshold * boldness:
+	if state == State.FLEE or fear >= species.fear_threshold * boldness:
 		return
-	_nudge_target = global_position + dir * lerpf(nudge_min_distance, nudge_max_distance, falloff)
+	_nudge_target = global_position + dir * lerpf(species.nudge_min_distance, species.nudge_max_distance, falloff)
 	if state == State.NUDGE:
 		_state_time_left = 4.0
 	else:
@@ -372,17 +332,17 @@ func _should_follow_leader() -> bool:
 	if _leader.state == State.FLEE:
 		return false
 	var d := _flat_distance_to(_leader.global_position)
-	return d > follow_start_distance or (_leader.state == State.WANDER and d > follow_stop_distance)
+	return d > follow_start_distance() or (_leader.state == State.WANDER and d > species.follow_stop_distance)
 
 func _follow_velocity() -> Vector3:
 	if _leader == null or not is_instance_valid(_leader):
 		return Vector3.ZERO
 	var to_leader := _leader.global_position - global_position
 	to_leader.y = 0.0
-	if to_leader.length() < follow_stop_distance:
+	if to_leader.length() < species.follow_stop_distance:
 		_enter(State.GRAZE)
 		return Vector3.ZERO
-	return to_leader.normalized() * follow_speed * sociability
+	return to_leader.normalized() * species.follow_speed * sociability
 
 func _herd_push() -> Vector3:
 	var push := Vector3.ZERO
@@ -393,22 +353,22 @@ func _herd_push() -> Vector3:
 		var away := global_position - other.global_position
 		away.y = 0.0
 		var d := away.length()
-		if d > 0.01 and d < separation_radius:
-			push += away.normalized() * (1.0 - d / separation_radius) * separation_push
+		if d > 0.01 and d < species.separation_radius:
+			push += away.normalized() * (1.0 - d / species.separation_radius) * species.separation_push
 	if not is_leader and _leader != null and is_instance_valid(_leader):
 		var to_leader := _leader.global_position - global_position
 		to_leader.y = 0.0
 		var d := to_leader.length()
-		if d > cohesion_start:
-			var t := clampf((d - cohesion_start) / maxf(0.1, follow_start_distance - cohesion_start), 0.0, 1.0)
-			push += to_leader.normalized() * t * cohesion_push * sociability
+		if d > species.cohesion_start:
+			var t := clampf((d - species.cohesion_start) / maxf(0.1, follow_start_distance() - species.cohesion_start), 0.0, 1.0)
+			push += to_leader.normalized() * t * species.cohesion_push * sociability
 	elif is_leader:
 		var centroid := _herd_centroid()
 		if centroid != Vector3.INF:
 			var to_c := centroid - global_position
 			to_c.y = 0.0
-			if to_c.length() > cohesion_start:
-				push += to_c.normalized() * leader_cohesion_push
+			if to_c.length() > species.cohesion_start:
+				push += to_c.normalized() * species.leader_cohesion_push
 	return push
 
 ## 聚合的参照点：普通牛看头牛，头牛看群体质心。
@@ -439,10 +399,10 @@ func _spread_fear() -> void:
 		var away := other.global_position - global_position
 		away.y = 0.0
 		var d := away.length()
-		if d <= contagion_radius:
+		if d <= species.contagion_radius:
 			# 传染的是同一个威胁位置；没有来源时把自己当来源。
 			var source := _threat_pos if _has_threat else global_position
-			other.add_fear(contagion_fear / maxf(0.2, other.boldness), source)
+			other.add_fear(species.contagion_fear / maxf(0.2, other.boldness), source)
 
 func _best_grass_dir() -> Vector3:
 	var best_dir := Vector3.ZERO
@@ -450,13 +410,17 @@ func _best_grass_dir() -> Vector3:
 	for i in 10:
 		var angle := float(i) / 10.0 * TAU + _noise_t
 		var dir := Vector3(cos(angle), 0.0, sin(angle))
-		var p := global_position + dir * leader_search_radius
+		var p: Vector3 = global_position + dir * species.leader_search_radius
 		var grass := 1.0 - clampf(absf(p.x) + absf(p.z), 0.0, 180.0) / 360.0
 		var score := grass + _noise.get_noise_2d(p.x * 0.03, p.z * 0.03) * 0.25
 		if score > best_score:
 			best_score = score
 			best_dir = dir
 	return best_dir
+
+## 跟随触发距离 = 种类基准 × 个体倍率。
+func follow_start_distance() -> float:
+	return species.follow_start_distance * follow_distance_scale
 
 func _flat_distance_to(point: Vector3) -> float:
 	var d := point - global_position

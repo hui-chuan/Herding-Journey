@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/world/grass_field.gd" id="12_field"]
 [ext_resource type="Script" path="res://scripts/world/mountains.gd" id="13_mountains"]
 [ext_resource type="Script" path="res://scripts/herd/herd_manager.gd" id="14_herd"]
+[ext_resource type="Resource" path="res://data/species/yak.tres" id="15_yak"]
 [ext_resource type="Script" path="res://scripts/world/pen.gd" id="15_pen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
@@ -159,6 +160,7 @@ surface_material_override/0 = SubResource("cow_mat")
 [node name="HerdManager" type="Node" parent="."]
 script = ExtResource("14_herd")
 cow_template_path = NodePath("../Cow")
+species = ExtResource("15_yak")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1183399508]
 script = ExtResource("6_debug")
