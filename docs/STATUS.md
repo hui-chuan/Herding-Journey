@@ -1,0 +1,98 @@
+# STATUS.md — 代码现状
+
+更新：2026-09-07。记录"代码里现在有什么"，供接手与复盘。设计意图看 PRD 与 DECISIONS，行为规格看 Herd_BEHAVIOR。
+
+仓库：https://github.com/hui-chuan/Herding-Journey · 引擎：Godot 4.7.2 stable
+
+## 进度
+
+| 里程碑 | 状态 | 说明 |
+| --- | --- | --- |
+| M1 手感 | 灰盒完成 | 玩家、相机、乌尔朵、单牛躲避 |
+| M2 群体 | 灰盒完成，调参中 | 状态机、性格、头牛、群体力、传染、吆喝、区域压力 |
+| M3 可玩 | 部分 | 时钟与光照有；畜栏与门有；归栏判定与简易结算有（调试层内）；**草场数据层未做** |
+| M4 循环 | 未开始 | 走失、存档 |
+
+## 目录
+
+```
+project.godot                 Forward+ / Jolt / InputMap / 自动加载 Clock
+scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、玩家、模板牛、牛群生成器、调试层
+shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 = 草场格尺寸）
+shaders/grass.gdshader        草丛：随风摆动，按实例变色，法线统一朝上
+scripts/autoload/clock.gd     全局时钟：一天 480 s，五时段，homing_urge() 归栏欲望曲线
+scripts/world/day_light.gd    太阳角度与色温随时钟变化
+scripts/world/grass_field.gd  MultiMesh 铺 12 万丛草
+scripts/world/mountains.gd    一圈低多边形远山
+scripts/world/greybox_props.gd 散落石块（StaticBody3D，带碰撞）
+scripts/world/pen.gd          畜栏：四边围栏带碰撞，东侧自动门
+scripts/player/player.gd      步行 2 / 奔跑 5 m/s；driving 吆喝开关
+scripts/player/player_body.gd 牧人外观（原生几何体拼）
+scripts/player/camera_rig.gd  固定 40° 俯角，水平可转，Tab 远近 + 静止 3 s 自动远观
+scripts/player/sling.gd       乌尔朵：鼠标瞄准落点，4–40 m，抛物线 1 s，冷却 2 s
+scripts/herd/cow.gd           牛：状态机、性格、惊吓、群体力、区域压力、头牛意图
+scripts/herd/yak_body.gd      牦牛外观，花色按种子
+scripts/herd/herd_manager.gd  用模板牛生成起始群（5 头，1 头头牛），分配性格
+scripts/debug/debug_overlay.gd 调试层与命令行参数
+```
+
+## 物理层
+
+| 层 | 名称 | 用途 |
+| --- | --- | --- |
+| 1 | ground | 地面、石块、围栏 |
+| 2 | player | 玩家（掩码 1+4） |
+| 3 (值 4) | livestock | 牛（掩码 1+2+4） |
+
+人、牛、石块、围栏互为实体，不穿模。
+
+## 牛的状态机（cow.gd）
+
+GRAZE / WANDER / REST / FOLLOW / FLEE / ALERT / NUDGE。调试层开着时每头牛头顶有状态小球：黄 = 头牛吃草，黑 = 吃草，蓝 = 跟随，红 = 惊跑，橙黄 = 警觉，橙 = 挪开。
+
+关键参数（均为 `@export`，在编辑器检查器里可调）：
+
+| 组 | 参数 | 值 |
+| --- | --- | --- |
+| 运动 | wander / follow / flee / nudge 速度 | 1.3 / 1.7 / 3.5 / 2.5 m/s |
+| 运动 | 平静上限 / 最小意图速度 | 3.0 / 0.25 m/s |
+| 运动 | 加速（平静 / 惊跑）/ 减速 | 3.0 / 8.0 / 3.5 |
+| 运动 | 漫步距离 / 惊跑最远 / 挪开距离 | 4–12 / 9 / 1.5–5 m |
+| 牛群 | 分离半径 / 力 | 3.5 m / 2.0 |
+| 牛群 | 聚合起点 / 力 / 头牛受质心牵引 | 4 m / 0.9 / 0.35 |
+| 牛群 | 跟随触发 / 停止距离 | 10–15 / 7 m |
+| 牛群 | 传染半径 / 量 | 8 m / 0.3 |
+| 惊吓 | 阈值 × 胆量 / 半衰期 | 0.5 / 6 s |
+| 施压 | 不吆喝半径 / 吆喝半径 / 吆喝惊吓 | 4 m / 8 m / 0.08 每秒 |
+| 乌尔朵 | 半径 / 惊吓 | 6 m / 0.7 |
+
+## 命令行调试参数
+
+```
+G=/Applications/Godot.app/Contents/MacOS/Godot
+$G --path . -- --time=0.85 --screenshot=out.png          # 指定时段截图（2 s 后）
+$G --path . -- --shot-delay=10 --player-at=-16,30 ...    # 延时截图、放置玩家
+$G --headless --path . --quit-after 1200 -- --log-positions   # 每秒打印每头牛的状态与位置
+$G --headless --path . --quit-after 700 -- --log-positions --test-sling   # 3 s 后在第一头普通牛旁落石
+$G --headless --path . --quit-after 1500 -- --log-positions --test-drive  # 玩家自动站在群后吆喝跟走
+```
+
+游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 远近。
+
+## 已知缺口
+
+- 草场数据层（BEHAVIOR §4）未做，头牛"挑草场"目前用一个假的草量场（离原点越近越高）。
+- 走失、存档、正式结算未做；结算目前只是调试层的一行文字，6 s 后自动进入次日。
+- 地形是平的；起伏与草量可视化留到 M3 处理 T14 时一起做。
+- 人和牛没有动画。
+- 落石的"闷响让其他牛抬头"未做。
+- 惊跑传染只传给半径内的牛，远端不受影响；"赶太猛整群炸"若要，可在区域压力里加传递。
+
+## 踩过的坑
+
+- 场景里的节点变换曾被编辑器误改（拖 gizmo 后保存），表现为人物和牛的朝向、位置异常。改场景前看一眼 git diff。
+- 用 duplicate 复制节点时材质资源是共享的，每个实例要 `duplicate()` 一份材质；实例的属性要在 `add_child` 之前配置好，否则 `_ready` 按模板值初始化。
+- 分离半径必须大于牛身长，否则中心距够远但模型仍重叠。
+- 惊跑结束时惊吓值仍高于阈值会立刻再跑；要在退出惊跑时消耗掉。
+- 无头模式不轮询鼠标手柄；有窗口时误点一下等于甩了一颗石头。
+- GDScript 对从 Variant 推断类型的 `:=` 报错，`get_node` / `lerp` 等返回 Variant 的地方要写显式类型或用 `lerpf`。
