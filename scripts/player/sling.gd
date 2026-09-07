@@ -9,8 +9,7 @@ extends Node3D
 @export var cooldown: float = 2.0
 @export var flight_time: float = 1.0
 @export var arc_height: float = 6.0
-@export var impact_radius: float = 4.0
-@export var impact_push: float = 7.0
+@export var impact_radius: float = 6.0
 @export var impact_fear: float = 0.7
 
 @onready var _player: CharacterBody3D = get_parent()
@@ -74,4 +73,4 @@ func _advance_stone(delta: float) -> void:
 
 func _land(point: Vector3) -> void:
 	for cow in get_tree().get_nodes_in_group("cows"):
-		cow.apply_sling_impact(point, impact_radius, impact_push, impact_fear)
+		cow.apply_sling_impact(point, impact_radius, impact_fear)

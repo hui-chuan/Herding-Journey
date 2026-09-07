@@ -62,12 +62,9 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 @export var pressure_push_walk: float = 0.5
 @export var pressure_push_run: float = 2.0
 @export var pressure_fear_run: float = 0.25
-## 吆喝：半径更大，牛小跑挪开，带少量惊吓。
+## 吆喝：以玩家为源点的区域压力，半径内的牛背离玩家挪开，惊吓缓慢累积。
 @export var drive_radius: float = 8.0
-@export var drive_nudge_distance: float = 4.0
 @export var drive_fear_per_sec: float = 0.08
-## 吆喝按群传递：被压到的牛把"向前走"传给这个半径内的同伴，队形整体前移。
-@export var drive_link_radius: float = 14.0
 
 var state: State = State.GRAZE
 var fear: float = 0.0
@@ -285,15 +282,8 @@ func _apply_player_pressure(delta: float) -> void:
 	if d < 0.01:
 		return
 	var driving: bool = _player.get("driving") == true
-	if driving and d <= drive_radius:
-		# 吆喝：被压到的牛累积少量惊吓（久了会真的惊跑），并带动整群沿同一方向前移。
-		var falloff := 1.0 - d / drive_radius
-		add_fear(drive_fear_per_sec * falloff * delta, _player.global_position)
-		var dir := _drive_direction(away.normalized())
-		for node in get_tree().get_nodes_in_group("cows"):
-			var other := node as Cow
-			if other != null and _flat_distance_to(other.global_position) <= drive_link_radius:
-				other.receive_drive(dir)
+	if driving:
+		apply_area_pressure(_player.global_position, drive_radius, drive_fear_per_sec * delta)
 		return
 	if d > pressure_radius:
 		return
@@ -312,43 +302,28 @@ func add_fear(amount: float, threat_pos: Vector3) -> void:
 	_threat_pos = threat_pos
 	_has_threat = true
 
-## 驱赶方向：玩家指向群体质心。从后面赶，群就往前走；贴得太近退化为背离玩家。
-func _drive_direction(fallback: Vector3) -> Vector3:
-	var sum := Vector3.ZERO
-	var n := 0
-	for node in get_tree().get_nodes_in_group("cows"):
-		sum += (node as Node3D).global_position
-		n += 1
-	if n == 0:
-		return fallback
-	var dir := sum / n - _player.global_position
-	dir.y = 0.0
-	return dir.normalized() if dir.length() > 1.0 else fallback
-
-## 接收群体驱赶：沿给定方向走一段，已在走则只刷新目标，队形不变。
-func receive_drive(dir: Vector3) -> void:
-	if state == State.FLEE:
-		return
-	_nudge_target = global_position + dir * drive_nudge_distance
-	if state == State.NUDGE:
-		_state_time_left = 4.0
-	else:
-		_enter(State.NUDGE)
-
-## 乌尔朵落地（BEHAVIOR §6.2）。推力与惊吓随距离衰减。
-func apply_sling_impact(point: Vector3, radius: float, push: float, fear_amount: float) -> void:
-	var away := global_position - point
+## 区域压力（吆喝与乌尔朵共用）：源点半径内的牛背离源点挪开，越近挪越远，并获得惊吓。
+## 已在挪开中则刷新目标，持续施压就持续前进；半径外的牛不受影响。
+func apply_area_pressure(source: Vector3, radius: float, fear_amount: float) -> void:
+	var away := global_position - source
 	away.y = 0.0
 	var d := away.length()
 	if d > radius:
 		return
 	var falloff := 1.0 - d / radius
 	var dir := away.normalized() if d > 0.01 else Vector3.FORWARD
-	add_fear(fear_amount * falloff, point)
-	# 没被吓跑的牛小跑挪开；跑不跑由 _physics_process 里的阈值判断决定。
-	if state != State.FLEE and fear < fear_threshold * boldness:
-		_nudge_target = global_position + dir * lerpf(nudge_min_distance, nudge_max_distance, falloff)
+	add_fear(fear_amount * falloff, source)
+	if state == State.FLEE or fear >= fear_threshold * boldness:
+		return
+	_nudge_target = global_position + dir * lerpf(nudge_min_distance, nudge_max_distance, falloff)
+	if state == State.NUDGE:
+		_state_time_left = 4.0
+	else:
 		_enter(State.NUDGE)
+
+## 乌尔朵落地（BEHAVIOR §6.2）。推力与惊吓随距离衰减。
+func apply_sling_impact(point: Vector3, radius: float, fear_amount: float) -> void:
+	apply_area_pressure(point, radius, fear_amount)
 
 func _lognormal(median: float, sigma: float) -> float:
 	return median * exp(randfn(0.0, sigma))
