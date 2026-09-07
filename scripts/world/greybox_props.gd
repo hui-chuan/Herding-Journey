@@ -11,7 +11,7 @@ func _ready() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var rock_mat := StandardMaterial3D.new()
-	rock_mat.albedo_color = Color(0.45, 0.45, 0.48)
+	rock_mat.albedo_color = Color(0.52, 0.48, 0.42)
 	for i in rock_count:
 		var a := rng.randf() * TAU
 		var r := sqrt(rng.randf()) * scatter_radius

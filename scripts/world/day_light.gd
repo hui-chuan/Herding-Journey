@@ -20,4 +20,4 @@ func _process(_delta: float) -> void:
 		light_color = noon_color.lerp(evening_color, (t - 0.65) / 0.25)
 	else:
 		light_color = evening_color.lerp(night_color, (t - 0.9) / 0.1)
-	light_energy = lerpf(0.3, 1.2, sin(t * PI))
+	light_energy = lerpf(0.7, 1.3, sin(t * PI))

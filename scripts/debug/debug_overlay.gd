@@ -2,11 +2,28 @@
 extends CanvasLayer
 
 @onready var _label: Label = $Label
+var _shot_path: String = ""
+var _shot_timer: float = 2.0
 
-func _process(_delta: float) -> void:
+func _ready() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--time="):
+			Clock.time_of_day = float(a.trim_prefix("--time="))
+		if a.begins_with("--screenshot="):
+			_shot_path = a.trim_prefix("--screenshot=")
+
+func _process(delta: float) -> void:
+	if _shot_path != "":
+		_shot_timer -= delta
+		if _shot_timer <= 0.0:
+			get_viewport().get_texture().get_image().save_png(_shot_path)
+			_shot_path = ""
+			get_tree().quit()
 	if Input.is_action_just_pressed("debug_toggle"):
 		visible = not visible
 	Clock.time_scale = 20.0 if Input.is_action_pressed("debug_time_fast") else 1.0
+	for cow in get_tree().get_nodes_in_group("cows"):
+		cow.get_node("StateMarker").visible = visible
 	if not visible:
 		return
 	var lines: PackedStringArray = []

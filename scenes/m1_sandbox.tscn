@@ -8,6 +8,11 @@
 [ext_resource type="Script" uid="uid://1xfojdygo6jy" path="res://scripts/debug/debug_overlay.gd" id="6_debug"]
 [ext_resource type="Script" path="res://scripts/world/greybox_props.gd" id="7_props"]
 [ext_resource type="Shader" path="res://shaders/grid_ground.gdshader" id="8_grid"]
+[ext_resource type="Script" path="res://scripts/herd/yak_body.gd" id="9_yak"]
+[ext_resource type="Script" path="res://scripts/player/player_body.gd" id="10_body"]
+[ext_resource type="Shader" path="res://shaders/grass.gdshader" id="11_grass"]
+[ext_resource type="Script" path="res://scripts/world/grass_field.gd" id="12_field"]
+[ext_resource type="Script" path="res://scripts/world/mountains.gd" id="13_mountains"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
 sky_top_color = Color(0.35, 0.55, 0.9, 1)
@@ -22,6 +27,10 @@ background_mode = 2
 sky = SubResource("sky")
 ambient_light_source = 3
 tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.72, 0.78, 0.88, 1)
+fog_density = 0.0018
+fog_sky_affect = 0.3
 
 [sub_resource type="BoxShape3D" id="ground_shape"]
 size = Vector3(400, 1, 400)
@@ -75,6 +84,13 @@ shape = SubResource("ground_shape")
 mesh = SubResource("ground_mesh")
 surface_material_override/0 = SubResource("ground_mat")
 
+[node name="Grass" type="MultiMeshInstance3D" parent="."]
+script = ExtResource("12_field")
+grass_shader = ExtResource("11_grass")
+
+[node name="Mountains" type="Node3D" parent="."]
+script = ExtResource("13_mountains")
+
 [node name="Props" type="Node3D" parent="."]
 script = ExtResource("7_props")
 
@@ -86,9 +102,9 @@ script = ExtResource("1_player")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=1120176912]
 shape = SubResource("player_shape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Player" unique_id=1187457747]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.60012054, -0.24604821, 1.3274316)
-mesh = SubResource("player_mesh")
+[node name="Body" type="Node3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.85, 0)
+script = ExtResource("10_body")
 
 [node name="Sling" type="Node3D" parent="Player" unique_id=287651537]
 script = ExtResource("3_sling")
@@ -123,9 +139,13 @@ script = ExtResource("4_cow")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Cow" unique_id=1855444185]
 shape = SubResource("cow_shape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Cow" unique_id=1393234781]
-transform = Transform3D(1, 0, 0, 0, 0.51545644, -0.8569158, 0, 0.8569158, 0.51545644, 0, 0, 0)
-mesh = SubResource("cow_mesh")
+[node name="Body" type="Node3D" parent="Cow"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.75, 0)
+script = ExtResource("9_yak")
+
+[node name="StateMarker" type="MeshInstance3D" parent="Cow"]
+transform = Transform3D(0.25, 0, 0, 0, 0.25, 0, 0, 0, 0.25, 0, 1.6, 0)
+mesh = SubResource("player_mesh")
 surface_material_override/0 = SubResource("cow_mat")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1183399508]

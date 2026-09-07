@@ -22,7 +22,7 @@ void fragment() {
 	vec2 p = world_pos.xz;
 	float major_l = grid(p, major, 0.12);
 	float minor_l = grid(p, minor, 0.03) * 0.35;
-	float l = max(major_l, minor_l);
+	float l = max(major_l * 0.5, minor_l * 0.4);
 	ALBEDO = mix(base_color, line_color, l);
 	ROUGHNESS = 1.0;
 }

@@ -37,7 +37,7 @@ var _noise := FastNoiseLite.new()
 var _noise_t: float = 0.0
 
 @onready var _player: CharacterBody3D = get_tree().get_first_node_in_group("player")
-@onready var _mesh: MeshInstance3D = $MeshInstance3D
+@onready var _mesh: MeshInstance3D = $StateMarker
 
 func _ready() -> void:
 	add_to_group("cows")
@@ -172,6 +172,7 @@ func apply_sling_impact(point: Vector3, radius: float, push: float, fear_amount:
 func _lognormal(median: float, sigma: float) -> float:
 	return median * exp(randfn(0.0, sigma))
 
+## 头顶的状态小球，只在调试层可见。
 func _update_color() -> void:
 	var mat := _mesh.get_surface_override_material(0) as StandardMaterial3D
 	if mat == null:
