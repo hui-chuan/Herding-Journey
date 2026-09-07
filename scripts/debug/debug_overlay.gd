@@ -23,6 +23,11 @@ func _ready() -> void:
 			_test_sling = true
 		if a == "--log-positions":
 			_log_positions = true
+		if a.begins_with("--player-at="):
+			var xz := a.trim_prefix("--player-at=").split(",")
+			var p := get_tree().get_first_node_in_group("player") as Node3D
+			if p and xz.size() == 2:
+				p.global_position = Vector3(float(xz[0]), 1.0, float(xz[1]))
 		if a.begins_with("--shot-delay="):
 			_shot_timer = float(a.trim_prefix("--shot-delay="))
 		if a.begins_with("--screenshot="):

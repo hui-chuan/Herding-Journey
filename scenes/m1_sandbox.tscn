@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/world/grass_field.gd" id="12_field"]
 [ext_resource type="Script" path="res://scripts/world/mountains.gd" id="13_mountains"]
 [ext_resource type="Script" path="res://scripts/herd/herd_manager.gd" id="14_herd"]
+[ext_resource type="Script" path="res://scripts/world/pen.gd" id="15_pen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
 sky_top_color = Color(0.35, 0.55, 0.9, 1)
@@ -91,6 +92,10 @@ grass_shader = ExtResource("11_grass")
 
 [node name="Mountains" type="Node3D" parent="."]
 script = ExtResource("13_mountains")
+
+[node name="Pen" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, 30)
+script = ExtResource("15_pen")
 
 [node name="Props" type="Node3D" parent="."]
 script = ExtResource("7_props")
