@@ -8,6 +8,7 @@ var _settlement_timer: float = 0.0
 var _log_positions: bool = false
 var _log_timer: float = 0.0
 var _test_sling: bool = false
+var _test_drive: bool = false
 var _test_sling_timer: float = 3.0
 var _settlement_text: String = ""
 
@@ -16,6 +17,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--time="):
 			Clock.time_of_day = float(a.trim_prefix("--time="))
+		if a == "--test-drive":
+			_test_drive = true
 		if a == "--test-sling":
 			_test_sling = true
 		if a == "--log-positions":
@@ -26,6 +29,20 @@ func _ready() -> void:
 			_shot_path = a.trim_prefix("--screenshot=")
 
 func _process(delta: float) -> void:
+	if _test_drive:
+		# 玩家站在群的南侧 6 m 处持续吆喝并跟着走。
+		var p := get_tree().get_first_node_in_group("player") as CharacterBody3D
+		var sum := Vector3.ZERO
+		var n := 0
+		for cow in get_tree().get_nodes_in_group("cows"):
+			sum += cow.global_position
+			n += 1
+		if p and n > 0:
+			p.set("driving", true)
+			var c := sum / n
+			var want := c + Vector3(0, 0, 6.0)
+			want.y = p.global_position.y
+			p.global_position = p.global_position.lerp(want, 1.5 * delta)
 	if _test_sling:
 		_test_sling_timer -= delta
 		if _test_sling_timer <= 0.0:

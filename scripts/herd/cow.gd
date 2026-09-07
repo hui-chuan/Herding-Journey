@@ -66,6 +66,8 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 @export var drive_radius: float = 8.0
 @export var drive_nudge_distance: float = 4.0
 @export var drive_fear_per_sec: float = 0.08
+## 吆喝按群传递：被压到的牛把"向前走"传给这个半径内的同伴，队形整体前移。
+@export var drive_link_radius: float = 14.0
 
 var state: State = State.GRAZE
 var fear: float = 0.0
@@ -284,12 +286,14 @@ func _apply_player_pressure(delta: float) -> void:
 		return
 	var driving: bool = _player.get("driving") == true
 	if driving and d <= drive_radius:
-		# 吆喝：平静的牛小跑背离玩家，惊吓缓慢累积（久了会真的惊跑）。
+		# 吆喝：被压到的牛累积少量惊吓（久了会真的惊跑），并带动整群沿同一方向前移。
 		var falloff := 1.0 - d / drive_radius
 		add_fear(drive_fear_per_sec * falloff * delta, _player.global_position)
-		if state != State.FLEE and state != State.NUDGE and fear < fear_threshold * boldness:
-			_nudge_target = global_position + away.normalized() * drive_nudge_distance
-			_enter(State.NUDGE)
+		var dir := _drive_direction(away.normalized())
+		for node in get_tree().get_nodes_in_group("cows"):
+			var other := node as Cow
+			if other != null and _flat_distance_to(other.global_position) <= drive_link_radius:
+				other.receive_drive(dir)
 		return
 	if d > pressure_radius:
 		return
@@ -307,6 +311,29 @@ func add_fear(amount: float, threat_pos: Vector3) -> void:
 	fear = minf(1.0, fear + amount)
 	_threat_pos = threat_pos
 	_has_threat = true
+
+## 驱赶方向：玩家指向群体质心。从后面赶，群就往前走；贴得太近退化为背离玩家。
+func _drive_direction(fallback: Vector3) -> Vector3:
+	var sum := Vector3.ZERO
+	var n := 0
+	for node in get_tree().get_nodes_in_group("cows"):
+		sum += (node as Node3D).global_position
+		n += 1
+	if n == 0:
+		return fallback
+	var dir := sum / n - _player.global_position
+	dir.y = 0.0
+	return dir.normalized() if dir.length() > 1.0 else fallback
+
+## 接收群体驱赶：沿给定方向走一段，已在走则只刷新目标，队形不变。
+func receive_drive(dir: Vector3) -> void:
+	if state == State.FLEE:
+		return
+	_nudge_target = global_position + dir * drive_nudge_distance
+	if state == State.NUDGE:
+		_state_time_left = 4.0
+	else:
+		_enter(State.NUDGE)
 
 ## 乌尔朵落地（BEHAVIOR §6.2）。推力与惊吓随距离衰减。
 func apply_sling_impact(point: Vector3, radius: float, push: float, fear_amount: float) -> void:
