@@ -15,18 +15,21 @@ const SATIETY_DECAY := 0.0001
 const LEADER_PICK_MIN_RADIUS := 15.0
 const LEADER_PICK_SAMPLES := 12
 
-@export_group("性格 (BEHAVIOR §2)")
-@export var boldness: float = 1.0
-@export var greed: float = 1.0
-@export var restlessness: float = 1.0
-@export var sociability: float = 1.0
-@export var is_leader: bool = false
+## 这头牛的持久数据（ARCHITECTURE §2.1）。入树前由 HerdManager 设好。
+## 留空则 _ready 里自己抽一份，方便在编辑器里单独拖一头牛出来试。
+var data: CowData
+
+# 以下四项是 data 的镜像，读得频繁，摊平成变量省一层间接。
+var boldness: float = 1.0
+var greed: float = 1.0
+var restlessness: float = 1.0
+var sociability: float = 1.0
+var is_leader: bool = false
+var follow_distance_scale: float = 1.0
 
 @export_group("种类 (DECISIONS T16)")
 ## 全部行为参数的来源。同种共享一份 .tres，调参只改那一个文件。
 @export var species: SpeciesData
-## 个体的跟随触发距离倍率：让"爱走远的牛"更晚才去追头牛。
-@export var follow_distance_scale: float = 1.0
 
 @export_group("牛群")
 @export var leader_path: NodePath
@@ -60,12 +63,17 @@ func _ready() -> void:
 	add_to_group("cows")
 	if species == null:
 		species = load(DEFAULT_SPECIES) as SpeciesData
-	# duplicate 出来的牛共用材质资源，这里各自复制一份，否则全群同色。
+	# 场景里的材质是共享资源，每头牛先各自复制一份，否则状态小球全群同色。
+	# 必须在 apply_data() 之前——它会调 _update_color() 写这份材质。
 	var shared := _mesh.get_surface_override_material(0)
 	if shared != null:
 		_mesh.set_surface_override_material(0, shared.duplicate())
-	if is_leader:
-		add_to_group("lead_cow")
+	if data == null:
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		data = CowData.roll(rng, 0, species, is_leader)
+		data.position = global_position
+	apply_data()
 	_grassland = get_tree().get_first_node_in_group("grassland") as Grassland
 	_noise.seed = randi()
 	_noise.frequency = 0.15
@@ -490,6 +498,39 @@ func _best_grass_dir() -> Vector3:
 	dir = dir.normalized()
 	_drift_dir = dir
 	return dir
+
+## 把 data 摊到运行时字段上，并让外观按 body_seed 重建。
+## 入树后调用；HerdManager 在 add_child 之前设好 data，_ready 里会自动调这一次。
+func apply_data() -> void:
+	if data == null:
+		return
+	if data.species != null:
+		species = data.species
+	boldness = data.boldness
+	greed = data.greed
+	restlessness = data.restlessness
+	sociability = data.sociability
+	follow_distance_scale = data.follow_distance_scale
+	is_leader = data.is_leader
+	satiety = data.satiety
+	if is_leader:
+		add_to_group("lead_cow")
+	elif is_in_group("lead_cow"):
+		remove_from_group("lead_cow")
+	var body := get_node_or_null("Body")
+	if body != null and data.body_seed != 0:
+		body.set("seed", data.body_seed)
+		if body.has_method("rebuild"):
+			body.rebuild()
+	_update_color()
+
+## 把运行时状态写回 data，供结算与存档使用（ARCHITECTURE §4.2）。
+func write_back() -> void:
+	if data == null:
+		return
+	data.satiety = satiety
+	data.position = global_position
+	data.is_leader = is_leader
 
 ## 跟随触发距离 = 种类基准 × 个体倍率。
 func follow_start_distance() -> float:

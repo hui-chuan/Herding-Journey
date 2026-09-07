@@ -239,7 +239,7 @@ M1/M2 的现状与上面的差异，按依赖顺序：
 | 1 | `Grassland` 数据层 + 接 `Clock.day_ended` | 头牛挑草场、走失投放、产奶 |
 | 2 | 牛接草场（消耗、效率、选点、挑草场） | 多日节奏 |
 | 3 | ~~`SpeciesData` 抽出 `cow.gd` 的 @export~~ **已完成** | M3 全部调参 |
-| 4 | `cow.tscn` 预制体 + `CowData` + `HerdManager` 重写 | 存档、走失、买牛 |
+| 4 | ~~`cow.tscn` 预制体 + `CowData` + `HerdManager` 重写~~ **已完成** | 存档、走失、买牛 |
 | 5 | `cow.gd` 拆分 | 后续可维护性（可与 3/4 合并做） |
 | 6 | 出栏/归栏判定收进 `Pen` + 60 s 宽限（围栏本体已有） | 结算 |
 | 7 | `main/world/ui` 三场景拆分 | 次日重建 |

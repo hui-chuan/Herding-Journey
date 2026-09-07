@@ -17,7 +17,7 @@
 
 ```
 project.godot                 Forward+ / Jolt / InputMap / 自动加载 Clock
-scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、玩家、模板牛、牛群生成器、调试层
+scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、草场、玩家、牛群生成器、调试层（牛不再在场景里）
 shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 = 草场格尺寸）
 shaders/grass.gdshader        草丛：随风摆动，按实例变色，法线统一朝上
 scripts/autoload/clock.gd     全局时钟：一天 480 s（**待改 1800 s**，D4），五时段（**待按 DAY_CYCLE §1.1 重划**），homing_urge()
@@ -32,10 +32,12 @@ scripts/player/player_body.gd 牧人外观（原生几何体拼）
 scripts/player/camera_rig.gd  固定 40° 俯角，水平可转，Tab 远近 + 静止 3 s 自动远观
 scripts/player/sling.gd       乌尔朵：鼠标瞄准落点，4–40 m，抛物线 1 s，冷却 2 s
 scripts/data/species_data.gd  种类行为参数 Resource（T16）：运动、群体力、惊吓、施压响应、草场
+scripts/data/cow_data.gd      一头牛的持久数据（性格、外观种子、饱腹、位置、走失夜数、存活）+ 存档往返
 data/species/yak.tres         牦牛的一份参数，全群共用；调参只改这个文件
 scripts/herd/cow.gd           牛：状态机、性格、惊吓、群体力、区域压力、头牛意图（参数读 species）
 scripts/herd/yak_body.gd      牦牛外观，花色按种子
-scripts/herd/herd_manager.gd  用模板牛生成起始群（5 头，1 头头牛），分配性格
+scripts/herd/herd_manager.gd  按 CowData 生成牛群（5 头，1 头头牛）；spawn/spawn_all/write_back_all
+scenes/cow.tscn               牛的预制体：碰撞体 + 外观 + 状态小球
 scripts/debug/debug_overlay.gd 调试层与命令行参数
 ```
 
@@ -82,6 +84,7 @@ $G --headless --path . --quit-after 700 -- --log-positions --test-sling   # 3 s 
 $G --headless --path . --quit-after 1500 -- --log-positions --test-drive  # 玩家自动站在群后吆喝跟走
 $G --headless --path . --quit-after 9000 -- --log-grass --time-scale=60     # 每 5 s 打印草场均值/退化/秃格/群的占格与饱腹
 $G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=60  # 把群按在原地，单独验证局部过牧
+$G --headless --path . --quit-after 900 -- --test-save                      # 牛与草场的存档往返自检
 ```
 
 游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 远近。
@@ -97,7 +100,10 @@ $G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=
 - 天黑宽限（60 s，D17）未做。
 - 走失、死亡、存档、正式结算未做；结算目前只是调试层的一行文字，6 s 后自动进入次日。规格已定：`DAY_CYCLE.md` §4–§5。
 - ~~`cow.gd` 的 @export 抽成 `SpeciesData`~~ → 已完成。
-- 牛还不是预制体（靠 duplicate 模板），`CowData` 未做。重构路线见 `ARCHITECTURE.md` §6。
+- ~~牛还不是预制体、`CowData` 未做~~ → **已完成**。`scenes/cow.tscn` + `CowData`，
+  `HerdManager` 按数据生成；存档往返已验证（5 头牛的性格/头牛/外观种子/位置与 1600 格草场全部一致，JSON 约 36 KB）。
+- `SaveIO` / `GameState` 两个 autoload 与真正的读写盘未做（现在只验证了序列化往返）。
+- 场景仍是单一的 `m1_sandbox.tscn`，`main/world/ui` 三层未拆（ARCHITECTURE §1.1）。
 - 地形是平的；起伏与草量可视化留到 M3 处理 T14 时一起做。
 - 人和牛没有动画。
 - 落石的"闷响让其他牛抬头"未做。

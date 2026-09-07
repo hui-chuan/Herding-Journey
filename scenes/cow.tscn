@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://cow0herd0prefab"]
+
+[ext_resource type="Script" path="res://scripts/herd/cow.gd" id="1_cow"]
+[ext_resource type="Script" path="res://scripts/herd/yak_body.gd" id="2_yak"]
+
+[sub_resource type="BoxShape3D" id="cow_shape"]
+size = Vector3(0.8, 1.5, 2.2)
+
+[sub_resource type="CapsuleMesh" id="marker_mesh"]
+radius = 0.35
+height = 1.7
+
+[sub_resource type="StandardMaterial3D" id="cow_mat"]
+albedo_color = Color(0.15, 0.12, 0.1, 1)
+
+[node name="Cow" type="CharacterBody3D" groups=["cows"]]
+collision_layer = 4
+collision_mask = 7
+script = ExtResource("1_cow")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("cow_shape")
+
+[node name="Body" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.75, 0)
+script = ExtResource("2_yak")
+
+[node name="StateMarker" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.25, 0, 0, 0, 0.25, 0, 0, 0, 0.25, 0, 1.6, 0)
+mesh = SubResource("marker_mesh")
+surface_material_override/0 = SubResource("cow_mat")

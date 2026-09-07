@@ -1,58 +1,78 @@
-## M2 灰盒牛群生成器。
-## 复用场景里手工搭好的 Cow 作为模板，运行时生成起始牛群。
+## 牛群：按 CowData 生成，而不是复制场景里的模板牛（ARCHITECTURE §3）。
+## 走失、买牛、读档重建都走同一条路——有数据就能造出牛。
 extends Node
 
-@export var cow_template_path: NodePath
+const COW_SCENE := preload("res://scenes/cow.tscn")
+## 起始 1 头头牛 + 4 头普通牛（DECISIONS D16）。
 @export var herd_size: int = 5
 @export var spawn_center := Vector3(8.0, 1.0, -8.0)
 @export var spawn_radius: float = 7.0
 @export var pen_center := Vector3(-30.0, 0.0, 30.0)
 @export var seed: int = 21
-## 全群共用的种类参数（T16）。留空则各头牛自己回落到 yak.tres。
+## 全群共用的种类参数（T16）。
 @export var species: SpeciesData
 
+## 场上所有牛的数据，结算与存档从这里取。
+var herd: Array[CowData] = []
+var _next_id: int = 1
+
 func _ready() -> void:
-	call_deferred("_spawn_herd")
+	add_to_group("herd_manager")
+	call_deferred("_start")
 
-func _spawn_herd() -> void:
-	var template := get_node_or_null(cow_template_path) as Cow
-	if template == null:
-		push_warning("HerdManager needs a Cow template.")
-		return
+func _start() -> void:
+	if species == null:
+		species = load(Cow.DEFAULT_SPECIES) as SpeciesData
+	if herd.is_empty():
+		_roll_starting_herd()
+	spawn_all()
 
+## 起始群：一头头牛，其余普通牛，散在出栏点周围。
+func _roll_starting_herd() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
-	_configure_cow(template, 0, rng, true)
-	template.add_to_group("lead_cow")
-	template.refresh_marker()
-	var leader := template
+	for i in herd_size:
+		var d := CowData.roll(rng, _next_id, species, i == 0)
+		_next_id += 1
+		var angle := rng.randf() * TAU
+		var dist := sqrt(rng.randf()) * spawn_radius
+		d.position = spawn_center + Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
+		d.position.y = 1.0
+		herd.append(d)
 
-	for i in range(1, herd_size):
-		var cow := template.duplicate() as Cow
-		cow.name = "Cow%d" % (i + 1)
-		# 先配置再入树，否则 _ready 会按模板（头牛）的参数初始化。
-		_configure_cow(cow, i, rng, false)
-		get_parent().add_child(cow)
-		cow.leader_path = cow.get_path_to(leader)
+## 按数据把整群造出来。读档与次日重建走的是同一个入口。
+func spawn_all() -> void:
+	var leader: Cow = null
+	var spawned: Array[Cow] = []
+	for d in herd:
+		if not d.alive:
+			continue
+		var cow := spawn(d)
+		spawned.append(cow)
+		if d.is_leader:
+			leader = cow
+	# 头牛可能在生成顺序的后面，统一在这里把跟随目标接上。
+	if leader != null:
+		for cow in spawned:
+			if cow != leader:
+				cow.leader_path = cow.get_path_to(leader)
 
-func _configure_cow(cow: Cow, index: int, rng: RandomNumberGenerator, leader: bool) -> void:
-	var angle := rng.randf() * TAU
-	var dist := sqrt(rng.randf()) * spawn_radius
-	cow.position = spawn_center + Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
-	cow.position.y = 1.0
-	cow.rotation.y = rng.randf() * TAU
-	cow.is_leader = leader
+func spawn(d: CowData) -> Cow:
+	var cow := COW_SCENE.instantiate() as Cow
+	# 入树前设好，_ready 才能按这份数据初始化（模板 duplicate 时代踩过的坑）。
+	cow.data = d
+	cow.species = d.species if d.species != null else species
 	cow.pen_center = pen_center
-	if species != null:
-		cow.species = species
-	cow.boldness = rng.randf_range(1.2, 1.5) if leader else rng.randf_range(0.65, 1.35)
-	cow.greed = rng.randf_range(0.75, 1.25)
-	cow.restlessness = rng.randf_range(0.75, 1.25)
-	cow.sociability = rng.randf_range(0.75, 1.25)
-	# 跟随触发距离改用倍率（种类基准 13 m）：头牛略宽松，普通牛 0.77–1.15 倍。
-	cow.follow_distance_scale = 1.15 if leader else rng.randf_range(0.77, 1.15)
-	var body := cow.get_node_or_null("Body")
-	if body != null:
-		body.seed = seed + index * 17
-		if body.has_method("rebuild"):
-			body.rebuild()
+	cow.name = "Cow%d" % d.id
+	add_child(cow)
+	cow.global_position = d.position
+	cow.rotation.y = randf() * TAU
+	return cow
+
+## 结算前把场上每头牛的状态写回数据（ARCHITECTURE §4.2）。
+func write_back_all() -> void:
+	for node in get_tree().get_nodes_in_group("cows"):
+		(node as Cow).write_back()
+
+func living() -> Array[CowData]:
+	return herd.filter(func(d: CowData) -> bool: return d.alive)

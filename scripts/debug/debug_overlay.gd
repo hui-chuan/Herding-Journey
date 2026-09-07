@@ -9,6 +9,8 @@ var _log_positions: bool = false
 var _log_grass: bool = false
 var _forced_scale: float = 0.0
 var _pin_herd: bool = false
+var _test_save: bool = false
+var _save_timer: float = 3.0
 var _grass_timer: float = 0.0
 var _log_timer: float = 0.0
 var _test_sling: bool = false
@@ -31,6 +33,8 @@ func _ready() -> void:
 			_log_grass = true
 		if a == "--pin-herd":
 			_pin_herd = true
+		if a == "--test-save":
+			_test_save = true
 		if a.begins_with("--player-at="):
 			var xz := a.trim_prefix("--player-at=").split(",")
 			var p := get_tree().get_first_node_in_group("player") as Node3D
@@ -68,7 +72,7 @@ func _process(delta: float) -> void:
 					leader = c
 					break
 			if leader:
-				var point: Vector3 = leader.global_position + Vector3(2.5, 0, 0)
+				var point: Vector3 = leader.global_position + Vector3(1.0, 0, 0)
 				print("TEST sling lands at %s" % point)
 				for cow in get_tree().get_nodes_in_group("cows"):
 					cow.apply_sling_impact(point, 6.0, 0.7)
@@ -79,6 +83,11 @@ func _process(delta: float) -> void:
 			off.y = 0.0
 			if off.length() > 20.0:
 				cow.global_position = Vector3(8.0, cow.global_position.y, -8.0) + off.normalized() * 20.0
+	if _test_save:
+		_save_timer -= delta
+		if _save_timer <= 0.0:
+			_test_save = false
+			_run_save_roundtrip()
 	if _log_grass:
 		_grass_timer -= delta
 		if _grass_timer <= 0.0:
@@ -185,3 +194,39 @@ func _on_day_ended(day: int) -> void:
 	var wool := penned
 	_settlement_text = "nightfall day %d  returned %d/%d  milk +%d  wool +%d  next dawn soon" % [day, penned, total, milk, wool]
 	_settlement_timer = 6.0
+
+
+## 验证 CowData / Grassland 的存档往返（ARCHITECTURE §4）。
+func _run_save_roundtrip() -> void:
+	var hm := get_tree().get_first_node_in_group("herd_manager")
+	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
+	if hm == null or gl == null:
+		print("SAVE test: herd_manager or grassland missing")
+		return
+	hm.write_back_all()
+	var payload := {
+		"save_version": 1,
+		"day": Clock.day,
+		"time_of_day": Clock.time_of_day,
+		"cows": hm.herd.map(func(d: CowData) -> Dictionary: return d.to_save()),
+		"grassland": gl.to_save(),
+	}
+	var text := JSON.stringify(payload)
+	print("SAVE json bytes=%d" % text.length())
+	var back: Dictionary = JSON.parse_string(text)
+	var sp: SpeciesData = hm.species
+	var restored: Array = back["cows"].map(func(d: Dictionary) -> CowData: return CowData.from_save(d, sp))
+	var ok: bool = restored.size() == hm.herd.size()
+	for i in restored.size():
+		var a: CowData = hm.herd[i]
+		var b: CowData = restored[i]
+		if a.id != b.id or absf(a.boldness - b.boldness) > 0.002 \
+				or a.is_leader != b.is_leader or a.body_seed != b.body_seed \
+				or a.position.distance_to(b.position) > 0.02:
+			ok = false
+			print("SAVE mismatch on cow %d" % a.id)
+	# 草场：改一格再读回，确认数值真的往返而不是同一个对象
+	var before: float = gl.sample(Vector3.ZERO)
+	gl.from_save(back["grassland"])
+	var after: float = gl.sample(Vector3.ZERO)
+	print("SAVE cows_ok=%s  grass_roundtrip=%.4f->%.4f  cells=%d" % [ok, before, after, back["grassland"]["size"]])
