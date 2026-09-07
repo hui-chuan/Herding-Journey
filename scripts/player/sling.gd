@@ -10,7 +10,7 @@ extends Node3D
 @export var flight_time: float = 1.0
 @export var arc_height: float = 6.0
 @export var impact_radius: float = 4.0
-@export var impact_push: float = 4.0
+@export var impact_push: float = 7.0
 @export var impact_fear: float = 0.7
 
 @onready var _player: CharacterBody3D = get_parent()

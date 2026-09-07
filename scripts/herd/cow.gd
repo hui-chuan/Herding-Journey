@@ -3,7 +3,7 @@
 class_name Cow
 extends CharacterBody3D
 
-enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT }
+enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT, NUDGE }
 
 @export_group("性格 (BEHAVIOR §2)")
 @export var boldness: float = 1.0
@@ -13,21 +13,25 @@ enum State { GRAZE, WANDER, REST, FOLLOW, FLEE, ALERT }
 @export var is_leader: bool = false
 
 @export_group("运动")
-@export var wander_speed: float = 0.8
-@export var follow_speed: float = 1.2
+@export var wander_speed: float = 1.3
+@export var follow_speed: float = 1.7
 @export var flee_speed: float = 3.5
 @export var turn_speed: float = 4.0
 ## 平静态下（含被推）的速度上限；惊跑时上限为 flee_speed。
-@export var calm_speed_cap: float = 2.5
+@export var calm_speed_cap: float = 3.0
 ## 目标速度低于此值视为停下，避免蠕动。
 @export var min_move_speed: float = 0.25
-@export var accel_calm: float = 2.0
+@export var accel_calm: float = 3.0
 @export var accel_flee: float = 8.0
 @export var decel: float = 3.5
 @export var wander_min_distance: float = 3.0
 @export var wander_max_distance: float = 8.0
 ## 一次惊跑最多跑这么远，跑到就停下张望。
 @export var flee_max_distance: float = 9.0
+## 被石头落点"挪开"：小跑背离落点，距离随落点远近在 [min,max] 之间。
+@export var nudge_speed: float = 2.5
+@export var nudge_min_distance: float = 1.5
+@export var nudge_max_distance: float = 5.0
 
 @export_group("牛群")
 @export var leader_path: NodePath
@@ -60,6 +64,7 @@ var _flee_dir: Vector3
 var _threat_pos: Vector3
 var _has_threat: bool = false
 var _flee_start: Vector3
+var _nudge_target: Vector3
 var _external_push: Vector3
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _noise := FastNoiseLite.new()
@@ -111,13 +116,21 @@ func _physics_process(delta: float) -> void:
 				desired = _flee_dir * flee_speed
 		State.ALERT:
 			desired = Vector3.ZERO
+		State.NUDGE:
+			var to_nudge := _nudge_target - global_position
+			to_nudge.y = 0.0
+			if to_nudge.length() < 0.4:
+				_enter(State.GRAZE)
+			else:
+				desired = to_nudge.normalized() * nudge_speed
 
 	# 最小速度只裁剪状态自身的意图，推力（分离、聚合、施压）不受此限。
 	if desired.length() < min_move_speed:
 		desired = Vector3.ZERO
 	desired += _herd_push()
 	desired += _external_push
-	_external_push = _external_push.move_toward(Vector3.ZERO, 8.0 * delta)
+	var pushed := _external_push.length() > 0.3
+	_external_push = _external_push.move_toward(Vector3.ZERO, 5.0 * delta)
 
 	# 速度上限 + 分开的加减速。
 	var cap := flee_speed if state == State.FLEE else calm_speed_cap
@@ -126,7 +139,7 @@ func _physics_process(delta: float) -> void:
 	var current := Vector3(velocity.x, 0.0, velocity.z)
 	var rate := decel
 	if desired.length() > current.length():
-		rate = accel_flee if state == State.FLEE else accel_calm
+		rate = accel_flee if (state == State.FLEE or pushed) else accel_calm
 	var next := current.move_toward(desired, rate * delta)
 	velocity.x = next.x
 	velocity.z = next.z
@@ -172,6 +185,8 @@ func _enter(s: State) -> void:
 			_flee_dir = _flee_dir.normalized().rotated(Vector3.UP, deg_to_rad(randf_range(-25.0, 25.0)))
 			if previous != State.FLEE:
 				_spread_fear()
+		State.NUDGE:
+			_state_time_left = 4.0
 		State.ALERT:
 			_state_time_left = randf_range(3.0, 8.0)
 			# 跑过一段就把惊吓"跑掉"一部分，否则警觉时仍高于阈值会立刻再次惊跑。
@@ -203,6 +218,8 @@ func _on_state_timeout() -> void:
 			_enter(State.GRAZE)
 		State.FLEE:
 			_enter(State.ALERT)
+		State.NUDGE:
+			_enter(State.GRAZE)
 		State.ALERT:
 			if fear < fear_threshold * boldness * 0.5:
 				_enter(State.GRAZE)
@@ -264,8 +281,11 @@ func apply_sling_impact(point: Vector3, radius: float, push: float, fear_amount:
 		return
 	var falloff := 1.0 - d / radius
 	var dir := away.normalized() if d > 0.01 else Vector3.FORWARD
-	_external_push += dir * push * falloff
 	add_fear(fear_amount * falloff, point)
+	# 没被吓跑的牛小跑挪开；跑不跑由 _physics_process 里的阈值判断决定。
+	if state != State.FLEE and fear < fear_threshold * boldness:
+		_nudge_target = global_position + dir * lerpf(nudge_min_distance, nudge_max_distance, falloff)
+		_enter(State.NUDGE)
 
 func _lognormal(median: float, sigma: float) -> float:
 	return median * exp(randfn(0.0, sigma))
@@ -282,6 +302,7 @@ func _update_color() -> void:
 		State.FOLLOW: mat.albedo_color = Color(0.25, 0.55, 0.9)
 		State.FLEE: mat.albedo_color = Color(0.8, 0.2, 0.1)
 		State.ALERT: mat.albedo_color = Color(0.8, 0.6, 0.1)
+		State.NUDGE: mat.albedo_color = Color(0.9, 0.5, 0.3)
 
 func refresh_marker() -> void:
 	_update_color()

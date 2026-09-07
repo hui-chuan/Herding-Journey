@@ -36,10 +36,10 @@ func _process(delta: float) -> void:
 					leader = c
 					break
 			if leader:
-				var point: Vector3 = leader.global_position + Vector3(0.8, 0, 0)
+				var point: Vector3 = leader.global_position + Vector3(2.5, 0, 0)
 				print("TEST sling lands at %s" % point)
 				for cow in get_tree().get_nodes_in_group("cows"):
-					cow.apply_sling_impact(point, 4.0, 4.0, 0.7)
+					cow.apply_sling_impact(point, 4.0, 7.0, 0.7)
 	if _log_positions:
 		_log_timer -= delta
 		if _log_timer <= 0.0:
