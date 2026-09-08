@@ -37,7 +37,8 @@ scripts/player/sling.gd       乌尔朵：鼠标瞄准落点，4–40 m，抛物
 scripts/data/species_data.gd  种类行为参数 Resource（T16）：运动、群体力、惊吓、施压响应、草场
 scripts/data/cow_data.gd      一头牛的持久数据（性格、外观种子、饱腹、位置、走失夜数、存活）+ 存档往返
 data/species/yak.tres         牦牛的一份参数，全群共用；调参只改这个文件
-scripts/herd/cow.gd           牛：状态机、性格、惊吓、群体力、区域压力、头牛意图（参数读 species）
+scripts/herd/cow.gd           牛：状态机、性格、惊吓、区域压力、头牛意图（参数读 species）
+scripts/herd/cow_forces.gd    群体力：分离、聚合、质心、传染邻居查询（静态函数，不持状态）
 scripts/herd/yak_body.gd      牦牛外观，花色按种子
 scripts/herd/herd_manager.gd  按 CowData 生成牛群（5 头，1 头头牛）；spawn/spawn_all/write_back_all
 scenes/cow.tscn               牛的预制体：碰撞体 + 外观 + 状态小球
@@ -135,6 +136,11 @@ $G --headless --path . --quit-after 400000 -- --time=0.97 --time-scale=12 --auto
 - 惊跑传染只传给半径内的牛，远端不受影响；"赶太猛整群炸"若要，可在区域压力里加传递。
 
 ## 踩过的坑
+
+- **牛群的行为跑一次看不出结论。** 每头牛的漫步噪声用 `randi()` 播种，不随
+  `HerdManager.seed` 固定，所以同一份代码连跑两次，群的质心、占格、脚下草量都会明显不同
+  （实测同一 build 两次：centroid (-28,37) eff 0.27 / (-32,37) eff 0.15）。
+  **比较改动前后的行为要各跑三次以上**，否则会把随机波动当成自己引入的 bug。
 
 - **`project.godot` 的翻译列表键名要带 `locale/` 前缀**：section 是 `[internationalization]`，
   键必须写成 `locale/translations=`，写成 `translations=` 不报错但一条都不加载

@@ -549,35 +549,17 @@ func _follow_velocity() -> Vector3:
 	return to_leader.normalized() * speed
 
 func _herd_push() -> Vector3:
-	var push := Vector3.ZERO
 	var moving := _moving_regime()
 	var sep_r: float = species.separation_radius_moving if moving else species.separation_radius
-	for node in get_tree().get_nodes_in_group("cows"):
-		var other := node as Cow
-		if other == null or other == self:
-			continue
-		var away := global_position - other.global_position
-		away.y = 0.0
-		var d := away.length()
-		if d > 0.01 and d < sep_r:
-			push += away.normalized() * (1.0 - d / sep_r) * species.separation_push
-	if not is_leader and _leader != null and is_instance_valid(_leader):
-		var to_leader := _leader.global_position - global_position
-		to_leader.y = 0.0
-		var d := to_leader.length()
+	var neighbours := CowForces.neighbours_of(self)
+	var push := CowForces.separation(self, neighbours, sep_r, species.separation_push)
+	if not is_leader:
 		# 移动档：拉力更强、起得更早，群收拢成一团跟着走。
 		var start: float = species.cohesion_start * (0.5 if moving else 1.0)
 		var strength: float = species.cohesion_push * (species.cohesion_moving_scale if moving else 1.0)
-		if d > start:
-			var t := clampf((d - start) / maxf(0.1, follow_start_distance() - start), 0.0, 1.0)
-			push += to_leader.normalized() * t * strength * sociability
-	elif is_leader:
-		var centroid := _herd_centroid()
-		if centroid != Vector3.INF:
-			var to_c := centroid - global_position
-			to_c.y = 0.0
-			if to_c.length() > species.cohesion_start:
-				push += to_c.normalized() * species.leader_cohesion_push
+		push += CowForces.cohesion_to_leader(self, _leader, start, strength, follow_start_distance())
+	else:
+		push += CowForces.leader_to_centroid(self, neighbours, species.cohesion_start, species.leader_cohesion_push)
 	return push
 
 ## 聚合的参照点：普通牛看头牛，头牛看群体质心。
@@ -589,13 +571,7 @@ func _cohesion_anchor() -> Vector3:
 	return Vector3.INF
 
 func _herd_centroid() -> Vector3:
-	var sum := Vector3.ZERO
-	var n := 0
-	for node in get_tree().get_nodes_in_group("cows"):
-		if node != self:
-			sum += (node as Node3D).global_position
-			n += 1
-	return sum / n if n > 0 else Vector3.INF
+	return CowForces.centroid(CowForces.neighbours_of(self))
 
 ## 惊吓传染分级（BEHAVIOR §5.2）：单头惊跑只让邻居抬头警觉；半径内已有别的牛在惊跑
 ## （两头以上同时惊）才连锁，全群炸开。炸开后各自跑不远，靠跟随机制自行重聚。
@@ -603,19 +579,12 @@ func _spread_fear() -> void:
 	if _has_spread_fear:
 		return
 	_has_spread_fear = true
-	var neighbours: Array[Cow] = []
-	var fleeing_nearby := 0
-	for node in get_tree().get_nodes_in_group("cows"):
-		var other := node as Cow
-		if other == null or other == self:
-			continue
-		if _flat_distance_to(other.global_position) <= species.contagion_radius:
-			neighbours.append(other)
-			if other.state == State.FLEE:
-				fleeing_nearby += 1
-	var chain := fleeing_nearby >= 1
+	var found := CowForces.neighbours_within(self, CowForces.neighbours_of(self), species.contagion_radius)
+	var neighbours: Array = found["near"]
+	var chain: bool = int(found["fleeing"]) >= 1
 	var source := _threat_pos if _has_threat else global_position
-	for other in neighbours:
+	for node in neighbours:
+		var other := node as Cow
 		if chain:
 			other.add_fear(species.contagion_fear / maxf(0.2, other.boldness), source)
 		else:
