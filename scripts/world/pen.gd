@@ -7,9 +7,12 @@ extends Node3D
 @export var gate_width: float = 5.0
 @export var post_spacing: float = 2.5
 @export var rail_height: float = 1.1
-@export var open_radius: float = 7.0
+@export var open_radius: float = 10.0
 @export var close_delay: float = 2.0
-@export var open_angle_deg: float = 110.0
+## 门扇向外贴着栅栏放平（175°）。开 110° 时门扇与栅栏夹出一个 V 形口袋，从后面赶来的牛正好被楔进去。
+@export var open_angle_deg: float = 175.0
+## 门外的集结点离门多远：牛先走到这里，再直线穿门，不会斜着撞栅栏。
+@export var approach_distance: float = 7.0
 @export var swing_speed: float = 2.0
 
 const WOOD := Color(0.5, 0.35, 0.2)
@@ -64,6 +67,26 @@ func _process(delta: float) -> void:
 
 func is_gate_open() -> bool:
 	return _gate_t > 0.5
+
+func gate_center() -> Vector3:
+	return _gate_center
+
+## 门外的集结点（门正对面 approach_distance 处）。
+func approach_point() -> Vector3:
+	return _gate_center + Vector3(approach_distance, 0.0, 0.0)
+
+## 从 from 出发要回栏，此刻该朝哪走（DAY_CYCLE §3）：
+## 栏内 → 栏中心；栏外且不在门前走廊里 → 集结点；在走廊里 → 直穿门到栏中心。
+## 直接瞄准栏中心会斜着撞在栅栏上卡住。
+func home_target(from: Vector3) -> Vector3:
+	if contains(from):
+		return global_position
+	var rel := from - _gate_center
+	var g := gate_width * 0.5
+	var in_corridor := rel.x >= -0.5 and rel.x <= approach_distance + 3.0 and absf(rel.z) <= g * 0.6
+	if in_corridor:
+		return global_position
+	return approach_point()
 
 ## 归栏判定（DAY_CYCLE §3.4）。半边长按围栏尺寸算，围栏挪位置或改大小都不用改别处。
 func contains(world_pos: Vector3) -> bool:

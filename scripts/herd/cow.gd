@@ -159,6 +159,7 @@ func _physics_process(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, atan2(-flat.x, -flat.z), species.turn_speed * delta)
 
 	move_and_slide()
+	_slide_along_walls()
 
 	_state_time_left -= delta
 	if _state_time_left <= 0.0:
@@ -172,6 +173,9 @@ func _enter(s: State) -> void:
 			_has_spread_fear = false
 			# 草好就多待，草差就短促结束（GRASSLAND §2.3）。
 			_state_time_left = _lognormal(20.0, 0.4) * greed * (0.4 + 0.6 * graze_efficiency())
+			# 傍晚在栏外，头牛吃草的间歇越来越短。
+			if is_leader and not is_in_pen():
+				_state_time_left *= 1.0 - 0.7 * Clock.homing_urge()
 		State.WANDER:
 			_has_spread_fear = false
 			_pick_wander_target()
@@ -214,8 +218,14 @@ func _on_state_timeout() -> void:
 				_enter(State.FOLLOW)
 				return
 			var r := randf()
-			var wander_w := (0.55 + Clock.homing_urge() * 0.3) * restlessness
+			var home := Clock.homing_urge()
+			var wander_w := (0.55 + home * 0.3) * restlessness
 			var rest_w := 0.08 if Clock.phase != Clock.Phase.NOON else 0.5
+			# 傍晚在栏外：头牛不卧下，吃两口就走（BEHAVIOR §3 认路回家）。
+			# 只靠"漫步权重加一点"回不了家——她会在 100 m 外卧到天黑。
+			if is_leader and home > 0.3 and not is_in_pen():
+				rest_w = 0.0
+				wander_w = maxf(wander_w, home)
 			# 草差就更想走、更不想卧下——牛群"自己离开吃秃的地方"由此涌现。
 			if graze_efficiency() < 0.5:
 				wander_w *= 2.5
@@ -248,10 +258,15 @@ func _on_state_timeout() -> void:
 func _pick_wander_target() -> void:
 	var home := Clock.homing_urge()
 	if is_leader and home > 0.05:
-		var to_pen := pen_position() - global_position
+		var target := home_target()
+		var to_pen := target - global_position
 		to_pen.y = 0.0
-		var step := randf_range(6.0, 14.0)
-		_wander_target = global_position + to_pen.normalized() * step * lerpf(0.5, 1.8, home)
+		# 离家越远步子越大（8–30 m），到门口收小，免得一步跨过集结点撞栅栏。
+		var step := minf(to_pen.length(), clampf(to_pen.length() * 0.5, 8.0, 30.0) * lerpf(0.6, 1.5, home))
+		_wander_target = global_position + to_pen.normalized() * step
+		# 吃草漂移也跟着朝家走，否则白天的旧方向会在两次归栏步之间把群拖回去。
+		if to_pen.length_squared() > 0.01:
+			_drift_dir = to_pen.normalized()
 		return
 	# 头牛：直接走向挑中的那一格（GRASSLAND §3）。
 	# 不要把它摊进下面的噪声采样——那样目标被稀释成十几米的随机漫步，
@@ -300,6 +315,33 @@ func _update_satiety(delta: float) -> void:
 			_state_time_left = minf(_state_time_left, 1.0)
 	else:
 		satiety = maxf(0.0, satiety - SATIETY_DECAY * game_delta)
+
+## 顶在栅栏上时沿栅栏滑向目标那一侧，而不是一直往里顶（DAY_CYCLE §3，"卡栅栏"）。
+## 只对有目标的移动态生效；吃草被推到栅栏上不管，推力一消它就停了。
+func _slide_along_walls() -> void:
+	if not is_on_wall():
+		return
+	var goal := Vector3.INF
+	match state:
+		State.WANDER: goal = _wander_target
+		State.NUDGE: goal = _nudge_target
+		State.FOLLOW:
+			if _leader != null and is_instance_valid(_leader):
+				goal = _leader.global_position
+	if goal == Vector3.INF:
+		return
+	var n := get_wall_normal()
+	n.y = 0.0
+	if n.length_squared() < 0.01:
+		return
+	n = n.normalized()
+	var to_goal := goal - global_position
+	to_goal.y = 0.0
+	# 目标方向去掉法向分量就是沿墙的分量；正顶着墙时任选一侧。
+	var tangent := to_goal - n * to_goal.dot(n)
+	if tangent.length_squared() < 0.05:
+		tangent = Vector3(-n.z, 0.0, n.x)
+	_external_push += tangent.normalized() * 1.5
 
 ## 吃草漂移（BEHAVIOR §1.3）：低着头一步步往前挪，方向是头牛的漂移方向，草越差挪越快。
 ## 速度低于 min_move_speed，也低于移动档的判定阈值，所以它不会把群切到移动档。
@@ -427,6 +469,10 @@ func state_name() -> String:
 ## 围栏中心。没有围栏时退回原点，灰盒里也不会崩。
 func pen_position() -> Vector3:
 	return _pen.global_position if _pen != null else Vector3.ZERO
+
+## 此刻回栏该朝哪走：栏外先去门前集结点，再直穿门。没有围栏时退回 pen_position()。
+func home_target() -> Vector3:
+	return _pen.home_target(global_position) if _pen != null else pen_position()
 
 ## 归栏判定交给 Pen（DAY_CYCLE §2.2）：只有一处知道"什么算在栏里"。
 func is_in_pen() -> bool:
@@ -583,7 +629,7 @@ func _best_grass_dir() -> Vector3:
 	var bias_dir := Vector3.ZERO
 	var home := Clock.homing_urge()
 	if home > 0.0:
-		bias_dir = pen_position() - global_position
+		bias_dir = home_target() - global_position
 		bias_dir.y = 0.0
 		bias_dir = bias_dir.normalized()
 	var target := _grassland.best_cell_near(

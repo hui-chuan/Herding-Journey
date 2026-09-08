@@ -90,6 +90,7 @@ script = ExtResource("15_pen")
 
 [node name="Grassland" type="Node3D" parent="."]
 script = ExtResource("16_grassland")
+ground_path = NodePath("../Ground/MeshInstance3D")
 
 [node name="Props" type="Node3D" parent="."]
 script = ExtResource("7_props")
@@ -131,6 +132,7 @@ transform = Transform3D(1, 0, 0, 0, 0.766, 0.643, 0, -0.643, 0.766, 0, 0, 0)
 [node name="Camera3D" type="Camera3D" parent="CameraRig/Pitch" unique_id=258698627]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 12)
 fov = 60.0
+far = 1200.0
 
 [node name="HerdManager" type="Node" parent="."]
 script = ExtResource("14_herd")

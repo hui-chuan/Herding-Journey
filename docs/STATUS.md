@@ -19,11 +19,12 @@
 project.godot                 Forward+ / Jolt / InputMap / 自动加载 Clock
 scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、草场、玩家、牛群生成器、调试层（牛不再在场景里）
 shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 = 草场格尺寸）
-shaders/grass.gdshader        草丛：随风摆动，按实例变色，法线统一朝上
+shaders/grass.gdshader        草丛：随风摆动，高度与颜色读草场网格
+shaders/grid_ground.gdshader  地面：网格线 + 草量底色（远视角下靠它读出被吃过的地方）
 scripts/autoload/clock.gd     全局时钟：一天 1800 s，五时段（DAY_CYCLE §1.1），60 s 天黑宽限，homing_urge()
 scripts/world/day_light.gd    太阳角度与色温随时钟变化
 scripts/world/grassland.gd    草场网格 40×40（Image RGF：R 草量 G 退化）：查询、消耗、挑草场、每日恢复、存档
-scripts/world/grass_field.gd  MultiMesh 铺 12 万丛草
+scripts/world/grass_field.gd  MultiMesh 铺 20 万丛草，铺满整张 400 m 地图
 scripts/world/mountains.gd    一圈低多边形远山
 scripts/world/greybox_props.gd 散落石块（StaticBody3D，带碰撞）
 scripts/world/pen.gd          畜栏：四边围栏带碰撞，东侧自动门；归栏判定 contains()/cows_inside()
@@ -86,9 +87,10 @@ $G --headless --path . --quit-after 1500 -- --log-positions --test-drive  # 玩�
 $G --headless --path . --quit-after 9000 -- --log-grass --time-scale=60     # 每 5 s 打印草场均值/退化/秃格/群的占格与饱腹
 $G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=60  # 把群按在原地，单独验证局部过牧
 $G --headless --path . --quit-after 900 -- --test-save                      # 牛与草场的存档往返自检
+$G --path . -- --zoom=2 --test-bare --shot-delay=8 --screenshot=out.png     # 远档 + 吃秃一片，检验草量可视化
 ```
 
-游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 远近。
+游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 三档视角循环。
 
 ## 已知缺口
 
@@ -96,7 +98,8 @@ $G --headless --path . --quit-after 900 -- --test-save                      # �
 - ~~草场压力未达设计目标~~ → 已解决。牛群放松到半径 14–18 m（占 4–5 格），
   并修正了按 480 s 的一天定的 `SATIETY_DECAY`（0.0002→0.0001，否则牛必饿死）。
   10 天实测饱腹度 0.50→0.32 后趋平，系统收敛。定标经过见 `GRASSLAND.md` §2.4、群体参数见 `Herd_BEHAVIOR.md` §5。
-- 草量可视化（P1）未做：`grassland.texture()` 已备好，`grass.gdshader` 尚未接。
+- ~~草量可视化未做~~ → **已完成**：草丛与地面两个 shader 都接了草场纹理。
+  只接草丛不够——远视角下草丛只占很少像素，亮绿的地面会把它冲掉，必须两个都接。
 - ~~一天仍是 480 s、时段边界与归栏曲线未按 DAY_CYCLE 重定~~ → **已完成**（1800 s，新五时段，t² 归栏曲线到 0.95 满值）。
 - ~~天黑宽限未做~~ → **已完成**：到 1.0 进宽限，60 s 或全部归栏则结算，`grace_started` / `day_ended` 两个信号。
 - 结算仍是调试层的一行文字，正式结算界面（DAY_CYCLE §4）未做。

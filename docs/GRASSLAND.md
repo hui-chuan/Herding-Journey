@@ -259,7 +259,18 @@ degradation = 0.0
 
 草量 → 草的高度与颜色，走已有的 `grass.gdshader` + MultiMesh（`scripts/world/grass_field.gd`）。
 
-**通路**：`GrassField` 持有的 `ImageTexture` 作为 uniform 传给 shader；顶点着色器按实例的世界 XZ 采样：
+**通路（已实现）**：`Grassland` 持有的 `ImageTexture` 同时绑给**两个** shader：
+
+| 材质 | 作用 | 为什么两个都要 |
+| --- | --- | --- |
+| `grass.gdshader`（MultiMesh 草丛） | 草的高度与颜色 | 近处的质感 |
+| `grid_ground.gdshader`（地面） | 地面底色 | **远视角下真正起作用的是这个** |
+
+只接草丛是不够的：草丛只有 0.3 m 高、稀疏散布，在 52 m 的远视角下每丛只占很少像素，
+底下那张亮绿色的地面把它们冲掉了，整片看上去仍是均匀的绿。实测把地面接上之后，
+被吃秃的一片才在远景里读得出来。
+
+顶点着色器按实例的世界 XZ 采样：
 
 ```glsl
 uniform sampler2D grassland_tex;   // R = 草量, G = 退化
@@ -275,7 +286,13 @@ COLOR.rgb = mix(DRY_YELLOW, LUSH_GREEN, g);
 2. **秃地是土黄不是焦黑**。高原的秃地是干草色，不是死地。避免让玩家觉得自己在破坏环境（PRD：不说教）
 3. **退化不做视觉表达**。它是隐形的长期代价，玩家应当通过"这里怎么老长不回来"来体会，而不是看一层红色 overlay
 
-每日恢复后更新一次纹理即可，不需要每帧。
+每日恢复后更新一次纹理即可，不需要每帧（`daily_regrow()` 里已经更新；
+要立刻看到当下的消耗可以调 `refresh_texture()`）。
+
+**颜色区间的坑。** 初版把 `smoothstep(0.0, 0.55, g)` 当成"秃到常态"的过渡，
+但地图初始草量本来就在 0.55 上下，于是绝大多数格子都落在 smoothstep 的饱和端，全图一个颜色。
+现改为两段：`smoothstep(0.02, 0.45)` 管秃地，`smoothstep(0.5, 1.0)` 管肥草，
+整个 0–1 区间都有可见变化。**做可视化时先确认数据的实际分布落在映射区间的哪一段。**
 
 ---
 

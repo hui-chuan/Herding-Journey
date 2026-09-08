@@ -39,11 +39,15 @@ var _img: Image
 var _tex: ImageTexture
 var _half: float
 
+## 地面 MeshInstance，草量同样画在它上面（远视角下它比草丛更重要）。
+@export var ground_path: NodePath
+
 func _ready() -> void:
 	add_to_group("grassland")
 	grid_size = int(round(map_size / cell_size))
 	_half = map_size * 0.5
 	_generate()
+	call_deferred("_bind_ground")
 	if not Clock.day_ended.is_connected(_on_day_ended):
 		Clock.day_ended.connect(_on_day_ended)
 
@@ -130,6 +134,11 @@ func daily_regrow() -> void:
 			_img.set_pixel(x, y, Color(clampf(g, 0.0, 1.0), d, 0.0, 1.0))
 	_update_texture()
 
+## 消耗是逐格改 Image 的，纹理不会自动跟着更新。
+## 平时每日恢复时更新一次就够；要立刻看到变化（调试、或将来做实时可视化）时调这个。
+func refresh_texture() -> void:
+	_update_texture()
+
 func texture() -> ImageTexture:
 	return _tex
 
@@ -188,3 +197,22 @@ func from_save(d: Dictionary) -> void:
 			var i := y * grid_size + x
 			_img.set_pixel(x, y, Color(grass[i], degr[i] if i < degr.size() else 0.0, 0.0, 1.0))
 	_update_texture()
+
+
+## 把草场纹理接到地面材质上。纹理对象在每日恢复后不变，只需绑一次。
+func _bind_ground() -> void:
+	var node := get_node_or_null(ground_path)
+	if node == null:
+		return
+	var mesh := node as MeshInstance3D
+	if mesh == null:
+		return
+	# 地面用的是 surface_material_override/0，不是 material_override，两种都认。
+	var mat := mesh.material_override as ShaderMaterial
+	if mat == null and mesh.get_surface_override_material_count() > 0:
+		mat = mesh.get_surface_override_material(0) as ShaderMaterial
+	if mat == null:
+		push_warning("Grassland: ground has no ShaderMaterial to bind.")
+		return
+	mat.set_shader_parameter("grassland_tex", _tex)
+	mat.set_shader_parameter("map_size", map_size)

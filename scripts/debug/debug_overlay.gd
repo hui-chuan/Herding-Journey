@@ -36,6 +36,13 @@ func _ready() -> void:
 			_pin_herd = true
 		if a == "--test-save":
 			_test_save = true
+		if a == "--test-bare":
+			call_deferred("_bare_patch")
+		if a.begins_with("--zoom="):
+			var rig := get_tree().get_first_node_in_group("camera_rig")
+			if rig != null:
+				rig.set("zoom_level", int(a.trim_prefix("--zoom=")))
+				rig.call("_ready")
 		if a.begins_with("--player-at="):
 			var xz := a.trim_prefix("--player-at=").split(",")
 			var p := get_tree().get_first_node_in_group("player") as Node3D
@@ -180,8 +187,10 @@ func _process(delta: float) -> void:
 	var lines: PackedStringArray = []
 	var player := get_tree().get_first_node_in_group("player")
 	var drive_txt := "  [吆喝]" if player and player.get("driving") == true else ""
+	var rig := get_tree().get_first_node_in_group("camera_rig")
+	var zoom_txt := "  视角 %s" % rig.call("zoom_name") if rig != null else ""
 	var grace_txt := "  宽限 %.0fs" % Clock.grace_left if Clock.in_grace else ""
-	lines.append("day %d  t=%.2f  %s  homing=%.2f%s%s" % [Clock.day, Clock.time_of_day, Clock.Phase.keys()[Clock.phase], Clock.homing_urge(), drive_txt, grace_txt])
+	lines.append("day %d  t=%.2f  %s  homing=%.2f%s%s" % [Clock.day, Clock.time_of_day, Clock.Phase.keys()[Clock.phase], Clock.homing_urge(), drive_txt, grace_txt + zoom_txt])
 	if _settlement_text != "":
 		lines.append(_settlement_text)
 	for cow in get_tree().get_nodes_in_group("cows"):
@@ -207,6 +216,7 @@ func _on_day_ended(day: int) -> void:
 	var milk := penned * 2
 	var wool := penned
 	_settlement_text = "nightfall day %d  returned %d/%d  milk +%d  wool +%d  next dawn soon" % [day, penned, total, milk, wool]
+	print("NIGHT " + _settlement_text)
 	print("SETTLE day=%d penned=%d/%d grace_left=%.1f" % [day, penned, total, Clock.grace_left])
 	_settlement_timer = 6.0
 
@@ -245,3 +255,16 @@ func _run_save_roundtrip() -> void:
 	gl.from_save(back["grassland"])
 	var after: float = gl.sample(Vector3.ZERO)
 	print("SAVE cows_ok=%s  grass_roundtrip=%.4f->%.4f  cells=%d" % [ok, before, after, back["grassland"]["size"]])
+
+
+## 调试：把玩家周围一片吃秃，检验草量可视化读不读得出来。
+func _bare_patch() -> void:
+	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
+	if gl == null:
+		return
+	for dz in range(-3, 4):
+		for dx in range(-3, 4):
+			var p := Vector3(dx * 10.0, 0.0, dz * 10.0)
+			gl.consume(p, 1.0)
+	gl.refresh_texture()
+	print("BARE patch applied around origin")
