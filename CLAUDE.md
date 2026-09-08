@@ -49,9 +49,10 @@ $G --headless --path . --quit-after 1500 -- --log-positions --test-drive
 
 # 每 5 游戏秒打印草场均值/退化/秃格/群的占格与饱腹。--time-scale 是引擎整体缩放（物理+时钟一起快），
 # 20 倍下一天 90 s 实时；别用 60，物理 delta 太大牛会在目标点附近抖
-$G --headless --path . --quit-after 27000 -- --log-grass --time-scale=20
+# 缩放下帧率会掉，按帧数的 --quit-after 不可靠，用 --quit-after-days=N（第 N 天结算后退出，会打印 SETTLE 行）
+$G --headless --path . --quit-after 200000 -- --log-grass --time-scale=20 --quit-after-days=1
 # 把群按在原地，单独验证局部过牧
-$G --headless --path . --quit-after 27000 -- --log-grass --pin-herd --time-scale=20
+$G --headless --path . --quit-after 200000 -- --log-grass --pin-herd --time-scale=20 --quit-after-days=3
 
 # 牛与草场的存档往返自检
 $G --headless --path . --quit-after 900 -- --test-save
