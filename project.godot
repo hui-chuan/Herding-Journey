@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Herding Traveler"
 config/description="当代藏区背景的 3D 低多边形放牧游戏"
-run/main_scene="res://scenes/m1_sandbox.tscn"
+run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]

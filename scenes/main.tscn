@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://main0herding"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/world.tscn" id="2_world"]
+[ext_resource type="PackedScene" path="res://scenes/ui.tscn" id="3_ui"]
+[ext_resource type="Script" path="res://scripts/ui/day_settlement.gd" id="4_settle"]
+[ext_resource type="Script" uid="uid://1xfojdygo6jy" path="res://scripts/debug/debug_overlay.gd" id="5_debug"]
+
+[sub_resource type="LabelSettings" id="dbg_label"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_main")
+
+[node name="WorldSlot" type="Node" parent="."]
+
+[node name="World" parent="WorldSlot" instance=ExtResource("2_world")]
+
+[node name="UI" parent="." instance=ExtResource("3_ui")]
+
+[node name="DaySettlement" type="Node" parent="."]
+script = ExtResource("4_settle")
+screen_path = NodePath("../UI/SettlementScreen")
+
+[node name="DebugOverlay" type="CanvasLayer" parent="."]
+script = ExtResource("5_debug")
+
+[node name="Label" type="Label" parent="DebugOverlay"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 800.0
+offset_bottom = 200.0
+label_settings = SubResource("dbg_label")

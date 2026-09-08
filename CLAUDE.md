@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 G=/Applications/Godot.app/Contents/MacOS/Godot
 
-# 打开编辑器 / 直接跑（主场景 scenes/m1_sandbox.tscn）
+# 打开编辑器 / 直接跑（主场景 scenes/main.tscn）
 $G --path .
 
 # 指定时段截图（2 s 后）

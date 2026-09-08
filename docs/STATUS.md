@@ -17,7 +17,10 @@
 
 ```
 project.godot                 Forward+ / Jolt / InputMap / 自动加载 Clock
-scenes/m1_sandbox.tscn        唯一场景：地面、光、草、远山、石块、畜栏、草场、玩家、牛群生成器、调试层（牛不再在场景里）
+scenes/main.tscn              常驻根：WorldSlot + UI + DaySettlement + 调试层
+scenes/world.tscn             可整体卸载重建：地面、光、草、远山、石块、畜栏、草场、玩家、相机、牛群生成器
+scenes/ui.tscn                CanvasLayer：结算界面
+scripts/main.gd               持有 World 与 UI，build_world / clear_world / reload_world
 shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 = 草场格尺寸）
 shaders/grass.gdshader        草丛：随风摆动，高度与颜色读草场网格
 shaders/grid_ground.gdshader  地面：网格线 + 草量底色（远视角下靠它读出被吃过的地方）
@@ -129,7 +132,10 @@ $G --headless --path . --quit-after 400000 -- --time=0.97 --time-scale=12 --auto
 - 藏文渲染已验证（T18）：内置 ICU/HarfBuzz 整形正确，不需要额外字体资产。
 - 出栏（DAY_CYCLE §3.1）已实现：群生成在栏内，清晨头牛朝栏外挑草场，其余跟出去。
 - 牛有下落速度上限、掉出地面的捞回、以及地图边界兜底（一处收口，不在四条移动路径上各写一遍）。
-- 场景仍是单一的 `m1_sandbox.tscn`，`main/world/ui` 三层未拆（ARCHITECTURE §1.1）。
+- ~~场景仍是单一的 `m1_sandbox.tscn`~~ → **已拆**为 `main` / `world` / `ui` 三层（ARCHITECTURE §1.1）。
+  次日重开与读档可以走"卸载 world 按数据重建"，不必逐个节点 reset。`main.gd` 提供
+  `build_world(herd)` / `clear_world()` / `reload_world(herd)`；**尚未接到结算的"睡觉"上**——
+  现在次日仍是 `HerdManager.begin_new_day()` 就地摆位，重建路径已备好但还没换过去。
 - 地形是平的；起伏与草量可视化留到 M3 处理 T14 时一起做。
 - 人和牛没有动画。
 - 落石的"闷响让其他牛抬头"未做。
