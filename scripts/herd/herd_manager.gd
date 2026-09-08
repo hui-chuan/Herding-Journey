@@ -26,6 +26,19 @@ func _start() -> void:
 		_roll_starting_herd()
 	spawn_all()
 
+## 从存档装回牛群（ARCHITECTURE §4）。清掉场上的牛，按数据重建。
+func load_from_save(cow_rows: Array) -> void:
+	for node in get_tree().get_nodes_in_group("cows"):
+		node.queue_free()
+	herd.clear()
+	for row in cow_rows:
+		var d := CowData.from_save(row, species)
+		herd.append(d)
+		_next_id = maxi(_next_id, d.id + 1)
+	# queue_free 要等到帧末才真的移除，先等一帧再生成，否则新旧牛会同时在组里。
+	await get_tree().process_frame
+	spawn_all()
+
 ## 起始群：一头头牛，其余普通牛，散在出栏点周围。
 func _roll_starting_herd() -> void:
 	var rng := RandomNumberGenerator.new()

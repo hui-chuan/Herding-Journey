@@ -18,6 +18,8 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 [autoload]
 
 Clock="*res://scripts/autoload/clock.gd"
+GameState="*res://scripts/autoload/game_state.gd"
+SaveIO="*res://scripts/autoload/save_io.gd"
 
 [display]
 

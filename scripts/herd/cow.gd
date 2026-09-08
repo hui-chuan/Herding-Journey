@@ -101,6 +101,9 @@ func _physics_process(delta: float) -> void:
 	_follow_check -= delta
 	if _follow_check <= 0.0:
 		_follow_check = 1.0
+		# 头牛傍晚在栏外不卧着：已在休息也起身走。
+		if is_leader and state == State.REST and Clock.homing_urge() > 0.3 and not is_in_pen():
+			_enter(State.WANDER)
 		if (state == State.GRAZE or state == State.REST or state == State.WANDER) and _should_follow_leader():
 			_enter(State.FOLLOW)
 	var desired := Vector3.ZERO
@@ -223,9 +226,9 @@ func _on_state_timeout() -> void:
 			var rest_w := 0.08 if Clock.phase != Clock.Phase.NOON else 0.5
 			# 傍晚在栏外：头牛不卧下，吃两口就走（BEHAVIOR §3 认路回家）。
 			# 只靠"漫步权重加一点"回不了家——她会在 100 m 外卧到天黑。
-			if is_leader and home > 0.3 and not is_in_pen():
+			if is_leader and home > 0.1 and not is_in_pen():
 				rest_w = 0.0
-				wander_w = maxf(wander_w, home)
+				wander_w = maxf(wander_w, 0.5 + home)
 			# 草差就更想走、更不想卧下——牛群"自己离开吃秃的地方"由此涌现。
 			if graze_efficiency() < 0.5:
 				wander_w *= 2.5

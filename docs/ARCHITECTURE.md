@@ -43,8 +43,8 @@ Autoload（`project.godot`）：
 | Autoload | 职责 | 状态 |
 | --- | --- | --- |
 | `Clock` | 唯一计时源（T17）。昼夜、结算、草场恢复 | 已有 |
-| `GameState` | 当前存档的内存镜像：日期、现金、库存、牛的数据数组 | 新增 |
-| `SaveIO` | JSON 读写、`save_version` 迁移 | 新增 |
+| `GameState` | 当前存档的内存镜像：现金、库存、死亡现场；collect/apply/settle | 已实现 |
+| `SaveIO` | JSON 读写、`save_version` 迁移 | 已实现 |
 
 **Autoload 只放这三个。** 草场、围栏、牛群都属于 world，不是全局的——把它们做成 autoload 会让"卸载 world 重建"变得不可能。需要跨节点找它们时用 group（`"grassland"`、`"pen"`、`"player"`、`"lead_cow"`）。
 
@@ -244,7 +244,7 @@ M1/M2 的现状与上面的差异，按依赖顺序：
 | 6 | ~~归栏判定收进 `Pen` + 60 s 宽限~~ **已完成**（出栏 §3.1 仍未做） | 结算 |
 | 7 | `main/world/ui` 三场景拆分 | 次日重建 |
 | 8 | 结算 UI + `tr()` + 藏文 TextServer 验证（T18） | M4 |
-| 9 | `SaveIO` + `GameState` | M4 出口 |
+| 9 | ~~`SaveIO` + `GameState`~~ **已完成**（落盘往返、版本拒绝已验证） | M4 出口 |
 
 1–2 是 GRASSLAND 的实现，3–5 是本文的重构，6–7 是 DAY_CYCLE 的实现，8–9 是 M4。
 

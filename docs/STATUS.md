@@ -22,6 +22,8 @@ shaders/grid_ground.gdshader  10 m 大格 + 1 m 小格的灰盒地面（大格 =
 shaders/grass.gdshader        草丛：随风摆动，高度与颜色读草场网格
 shaders/grid_ground.gdshader  地面：网格线 + 草量底色（远视角下靠它读出被吃过的地方）
 scripts/autoload/clock.gd     全局时钟：一天 1800 s，五时段（DAY_CYCLE §1.1），60 s 天黑宽限，homing_urge()
+scripts/autoload/game_state.gd 现金、库存、死亡现场；collect/apply 汇总整局状态，settle 算产出
+scripts/autoload/save_io.gd   JSON 读写 user://save_1.json，save_version 与迁移分支
 scripts/world/day_light.gd    太阳角度与色温随时钟变化
 scripts/world/grassland.gd    草场网格 40×40（Image RGF：R 草量 G 退化）：查询、消耗、挑草场、每日恢复、存档
 scripts/world/grass_field.gd  MultiMesh 铺 20 万丛草，铺满整张 400 m 地图
@@ -88,6 +90,7 @@ $G --headless --path . --quit-after 9000 -- --log-grass --time-scale=60     # �
 $G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=60  # 把群按在原地，单独验证局部过牧
 $G --headless --path . --quit-after 900 -- --test-save                      # 牛与草场的存档往返自检
 $G --path . -- --zoom=2 --test-bare --shot-delay=8 --screenshot=out.png     # 远档 + 吃秃一片，检验草量可视化
+$G --headless --path . --quit-after 900 -- --test-load                      # 只读一次存档（用于验证迁移/拒绝路径）
 ```
 
 游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 三档视角循环。
@@ -107,7 +110,9 @@ $G --path . -- --zoom=2 --test-bare --shot-delay=8 --screenshot=out.png     # �
 - ~~`cow.gd` 的 @export 抽成 `SpeciesData`~~ → 已完成。
 - ~~牛还不是预制体、`CowData` 未做~~ → **已完成**。`scenes/cow.tscn` + `CowData`，
   `HerdManager` 按数据生成；存档往返已验证（5 头牛的性格/头牛/外观种子/位置与 1600 格草场全部一致，JSON 约 36 KB）。
-- `SaveIO` / `GameState` 两个 autoload 与真正的读写盘未做（现在只验证了序列化往返）。
+- ~~`SaveIO` / `GameState` 与真正的读写盘未做~~ → **已完成**。落盘往返验证：写盘 → 故意破坏内存状态
+  → 读盘，牛/草场/现金库存全部还原，5 头牛无重复。未来版本号的存档会被拒绝读取并报错，不静默丢档。
+- 结算已接存档与走失/死亡判定（调试层内），正式结算界面（DAY_CYCLE §4）仍未做。
 - 场景仍是单一的 `m1_sandbox.tscn`，`main/world/ui` 三层未拆（ARCHITECTURE §1.1）。
 - 地形是平的；起伏与草量可视化留到 M3 处理 T14 时一起做。
 - 人和牛没有动画。

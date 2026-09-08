@@ -10,6 +10,7 @@ var _log_grass: bool = false
 var _forced_scale: float = 0.0
 var _pin_herd: bool = false
 var _test_save: bool = false
+var _test_load: bool = false
 var _save_timer: float = 3.0
 var _grass_timer: float = 0.0
 var _log_timer: float = 0.0
@@ -36,6 +37,8 @@ func _ready() -> void:
 			_pin_herd = true
 		if a == "--test-save":
 			_test_save = true
+		if a == "--test-load":
+			_test_load = true
 		if a == "--test-bare":
 			call_deferred("_bare_patch")
 		if a.begins_with("--zoom="):
@@ -96,6 +99,12 @@ func _process(delta: float) -> void:
 		if _save_timer <= 0.0:
 			_test_save = false
 			_run_save_roundtrip()
+	if _test_load:
+		_save_timer -= delta
+		if _save_timer <= 0.0:
+			_test_load = false
+			var d := SaveIO.load_save()
+			print("LOAD result empty=%s (空 = 正确地拒绝了读取)" % d.is_empty())
 	if _log_grass:
 		_grass_timer -= delta
 		if _grass_timer <= 0.0:
@@ -173,6 +182,9 @@ func _process(delta: float) -> void:
 	if _forced_scale > 0.0:
 		Engine.time_scale = _forced_scale
 		Clock.time_scale = 1.0
+		# 默认每帧最多补 8 个物理步，缩放超过 8 倍时物理就跟不上时钟，牛又"相对一天"变慢了。
+		# 放开上限，宁可帧率掉也要物理与时钟同步。
+		Engine.max_physics_steps_per_frame = maxi(8, int(ceil(_forced_scale)) * 2)
 	else:
 		Clock.time_scale = 20.0 if Input.is_action_pressed("debug_time_fast") else 1.0
 	if _settlement_timer > 0.0:
@@ -204,67 +216,90 @@ func _process(delta: float) -> void:
 
 func _on_grace_started() -> void:
 	_settlement_text = "天黑了，还有 %d 秒宽限" % int(Clock.grace_sec)
-	print("GRACE started t=%.3f" % Clock.time_of_day)
 
+## 天黑结算：统计存栏、产出、写回数据、存盘（DAY_CYCLE §4，ARCHITECTURE §4.2）。
 func _on_day_ended(day: int) -> void:
-	var total := 0
-	var penned := 0
-	for cow in get_tree().get_nodes_in_group("cows"):
-		total += 1
-		if cow.has_method("is_in_pen") and cow.is_in_pen():
-			penned += 1
-	var milk := penned * 2
-	var wool := penned
-	_settlement_text = "nightfall day %d  returned %d/%d  milk +%d  wool +%d  next dawn soon" % [day, penned, total, milk, wool]
-	print("NIGHT " + _settlement_text)
-	print("SETTLE day=%d penned=%d/%d grace_left=%.1f" % [day, penned, total, Clock.grace_left])
+	var hm := get_tree().get_first_node_in_group("herd_manager")
+	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if hm == null:
+		return
+	hm.write_back_all()
+
+	var penned: Array = []
+	var lost: Array = []
+	for node in get_tree().get_nodes_in_group("cows"):
+		var cow := node as Cow
+		if cow.is_in_pen():
+			cow.data.lost_nights = 0
+			penned.append(cow.data)
+		else:
+			# 连续两晚未归栏，第二晚起有概率遭狼（D5）。第一晚绝不死。
+			cow.data.lost_nights += 1
+			lost.append(cow.data)
+
+	var summary := GameState.settle(penned)
+	var died: Array = []
+	for d in lost:
+		var c := d as CowData
+		if c.lost_nights >= 2 and randf() < 0.25:
+			c.alive = false
+			GameState.death_marks.append(c.position)
+			died.append(c)
+
+	SaveIO.save(GameState.collect(hm.herd, gl, player))
+
+	var parts: PackedStringArray = ["day %d  存栏 %d/%d  奶 +%d  毛 +%d" % [
+		day, penned.size(), penned.size() + lost.size(), summary["milk"], summary["wool"]]]
+	for c in lost:
+		if (c as CowData).alive:
+			parts.append("%s 没有回来" % _cow_label(c))
+	for c in died:
+		parts.append("%s 死了" % _cow_label(c))
+	_settlement_text = "  ·  ".join(parts)
+	print("SETTLE %s" % _settlement_text)
 	_settlement_timer = 6.0
 
+func _cow_label(d: CowData) -> String:
+	return d.display_name if d.display_name != "" else "Cow%d" % d.id
 
-## 验证 CowData / Grassland 的存档往返（ARCHITECTURE §4）。
+## 验证真正的落盘往返（ARCHITECTURE §4）：写盘 → 改状态 → 读盘 → 比对。
 func _run_save_roundtrip() -> void:
 	var hm := get_tree().get_first_node_in_group("herd_manager")
 	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
+	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if hm == null or gl == null:
 		print("SAVE test: herd_manager or grassland missing")
 		return
+
 	hm.write_back_all()
-	var payload := {
-		"save_version": 1,
-		"day": Clock.day,
-		"time_of_day": Clock.time_of_day,
-		"cows": hm.herd.map(func(d: CowData) -> Dictionary: return d.to_save()),
-		"grassland": gl.to_save(),
-	}
-	var text := JSON.stringify(payload)
-	print("SAVE json bytes=%d" % text.length())
-	var back: Dictionary = JSON.parse_string(text)
-	var sp: SpeciesData = hm.species
-	var restored: Array = back["cows"].map(func(d: Dictionary) -> CowData: return CowData.from_save(d, sp))
-	var ok: bool = restored.size() == hm.herd.size()
-	for i in restored.size():
-		var a: CowData = hm.herd[i]
-		var b: CowData = restored[i]
-		if a.id != b.id or absf(a.boldness - b.boldness) > 0.002 \
-				or a.is_leader != b.is_leader or a.body_seed != b.body_seed \
-				or a.position.distance_to(b.position) > 0.02:
-			ok = false
-			print("SAVE mismatch on cow %d" % a.id)
-	# 草场：改一格再读回，确认数值真的往返而不是同一个对象
-	var before: float = gl.sample(Vector3.ZERO)
-	gl.from_save(back["grassland"])
-	var after: float = gl.sample(Vector3.ZERO)
-	print("SAVE cows_ok=%s  grass_roundtrip=%.4f->%.4f  cells=%d" % [ok, before, after, back["grassland"]["size"]])
-
-
-## 调试：把玩家周围一片吃秃，检验草量可视化读不读得出来。
-func _bare_patch() -> void:
-	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
-	if gl == null:
+	GameState.cash = 42
+	GameState.inventory["milk"] = 7
+	var payload := GameState.collect(hm.herd, gl, player)
+	if not SaveIO.save(payload):
+		print("SAVE test: write failed")
 		return
-	for dz in range(-3, 4):
-		for dx in range(-3, 4):
-			var p := Vector3(dx * 10.0, 0.0, dz * 10.0)
-			gl.consume(p, 1.0)
-	gl.refresh_texture()
-	print("BARE patch applied around origin")
+
+	# 破坏当前状态，确认读回来的是盘上的那份而不是内存里的残留。
+	var before_first: Dictionary = hm.herd[0].to_save()
+	var before_grass: float = gl.sample(Vector3.ZERO)
+	GameState.cash = 0
+	GameState.inventory["milk"] = 0
+	gl.consume(Vector3.ZERO, 1.0)
+
+	var back := SaveIO.load_save()
+	if back.is_empty():
+		print("SAVE test: load failed")
+		return
+	GameState.apply(back)
+	gl.from_save(back["grassland"])
+	hm.load_from_save(back["cows"])
+	await get_tree().process_frame
+
+	var after_first: Dictionary = hm.herd[0].to_save()
+	var cows_ok: bool = after_first == before_first and hm.herd.size() == back["cows"].size()
+	var grass_ok: bool = absf(gl.sample(Vector3.ZERO) - before_grass) < 0.002
+	var state_ok: bool = GameState.cash == 42 and GameState.inventory["milk"] == 7
+	var spawned := get_tree().get_nodes_in_group("cows").size()
+	print("SAVE roundtrip cows=%s grass=%s state=%s spawned=%d day=%d" % [
+		cows_ok, grass_ok, state_ok, spawned, Clock.day])
