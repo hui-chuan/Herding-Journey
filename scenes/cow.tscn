@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://cow0herd0prefab"]
+[gd_scene format=3 uid="uid://6vowcrk6d4dd"]
 
 [ext_resource type="Script" path="res://scripts/herd/cow.gd" id="1_cow"]
 [ext_resource type="Script" path="res://scripts/herd/yak_body.gd" id="2_yak"]

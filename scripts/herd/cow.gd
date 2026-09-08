@@ -55,6 +55,10 @@ var _noise := FastNoiseLite.new()
 var _noise_t: float = 0.0
 var _leader: Cow
 var _has_spread_fear: bool = false
+## 跟随检查的节拍。原来只在吃草计时结束时看一眼头牛，最长要等 20 s，头牛早走远了。
+var _follow_check: float = 0.0
+## 这一帧是否有压力源在作用。没有 → 撤压奖励，惊吓加速衰减（BEHAVIOR §6.5）。
+var _pressured: bool = false
 
 @onready var _player: CharacterBody3D = get_tree().get_first_node_in_group("player")
 @onready var _mesh: MeshInstance3D = $StateMarker
@@ -78,18 +82,27 @@ func _ready() -> void:
 	_pen = get_tree().get_first_node_in_group("pen") as Pen
 	_noise.seed = randi()
 	_noise.frequency = 0.15
+	# 漂移方向从随机开始，头牛第一次挑草场后会被覆盖。
+	var a0 := randf() * TAU
+	_drift_dir = Vector3(cos(a0), 0.0, sin(a0))
 	_resolve_leader()
 	_enter(State.GRAZE)
 
 func _physics_process(delta: float) -> void:
 	_noise_t += delta * 0.05
 	_decay_fear(delta)
+	_pressured = false
 	_update_satiety(delta)
 	_apply_player_pressure(delta)
 	if state != State.FLEE and fear >= species.fear_threshold * boldness:
 		_enter(State.FLEE)
 
 	_resolve_leader()
+	_follow_check -= delta
+	if _follow_check <= 0.0:
+		_follow_check = 1.0
+		if (state == State.GRAZE or state == State.REST or state == State.WANDER) and _should_follow_leader():
+			_enter(State.FOLLOW)
 	var desired := Vector3.ZERO
 	match state:
 		State.GRAZE, State.REST:
@@ -118,9 +131,11 @@ func _physics_process(delta: float) -> void:
 			else:
 				desired = to_nudge.normalized() * species.nudge_speed
 
-	# 最小速度只裁剪状态自身的意图，推力（分离、聚合、施压）不受此限。
+	# 最小速度只裁剪状态自身的意图，推力（分离、聚合、施压）与吃草漂移不受此限。
 	if desired.length() < species.min_move_speed:
 		desired = Vector3.ZERO
+	if state == State.GRAZE:
+		desired += _graze_drift()
 	desired += _herd_push()
 	desired += _external_push
 	var pushed := _external_push.length() > 0.3
@@ -200,7 +215,7 @@ func _on_state_timeout() -> void:
 				return
 			var r := randf()
 			var wander_w := (0.55 + Clock.homing_urge() * 0.3) * restlessness
-			var rest_w := 0.08 if Clock.phase != Clock.Phase.NOON else 0.35
+			var rest_w := 0.08 if Clock.phase != Clock.Phase.NOON else 0.5
 			# 草差就更想走、更不想卧下——牛群"自己离开吃秃的地方"由此涌现。
 			if graze_efficiency() < 0.5:
 				wander_w *= 2.5
@@ -247,20 +262,23 @@ func _pick_wander_target() -> void:
 	# 缓慢变化的噪声场给出方向。
 	var angle := _noise.get_noise_2d(_noise_t * 10.0, float(get_instance_id() % 1000)) * TAU
 	var dist := clampf(randf_range(species.wander_min_distance, species.wander_max_distance) * restlessness, species.wander_min_distance, species.wander_max_distance)
-	# 以噪声方向为中心撒若干候选点，按"离头牛/群近"加权抽取（BEHAVIOR §1.2）。
+	# 以噪声方向为中心撒若干候选点，按草量选，出了舒适半径才按合群扣分（BEHAVIOR §1.2）。
+	# 早先的写法把草量乘在一个 0–0.5 的随机数上、把"靠近头牛"当 ±1 的加分项，
+	# 结果头牛不动时候选点永远选离她更近的那个，草再差也不走，群守着秃格饿到 0.15。
 	var anchor := _cohesion_anchor()
 	var best := global_position + Vector3(cos(angle), 0.0, sin(angle)) * dist
 	var best_score := -INF
 	for i in species.wander_samples:
 		var a := angle + randf_range(-PI * 0.75, PI * 0.75)
 		var cand := global_position + Vector3(cos(a), 0.0, sin(a)) * dist * randf_range(0.6, 1.0)
-		var score := randf() * 0.5
+		var score := randf() * 0.3
 		if _grassland != null:
-			score *= 0.3 + _grassland.sample(cand)
+			score += 1.5 * _grassland.sample(cand)
 		if anchor != Vector3.INF:
-			var d_now := _flat_distance_to(anchor)
 			var d_cand := cand.distance_to(anchor)
-			score += (d_now - d_cand) / dist * species.wander_cohesion_weight * sociability
+			var comfort: float = species.cohesion_start
+			if d_cand > comfort:
+				score -= (d_cand - comfort) / maxf(1.0, follow_start_distance() - comfort) * species.wander_cohesion_weight * sociability
 		if score > best_score:
 			best_score = score
 			best = cand
@@ -283,6 +301,21 @@ func _update_satiety(delta: float) -> void:
 	else:
 		satiety = maxf(0.0, satiety - SATIETY_DECAY * game_delta)
 
+## 吃草漂移（BEHAVIOR §1.3）：低着头一步步往前挪，方向是头牛的漂移方向，草越差挪越快。
+## 速度低于 min_move_speed，也低于移动档的判定阈值，所以它不会把群切到移动档。
+func _graze_drift() -> Vector3:
+	var dir := herd_drift_dir()
+	if dir.length_squared() < 0.01:
+		return Vector3.ZERO
+	var eff := graze_efficiency()
+	return dir * species.graze_drift_speed * clampf(1.5 - eff, 0.5, 1.3)
+
+## 群的漂移方向：头牛上次挑草场的方向；普通牛读头牛的。
+func herd_drift_dir() -> Vector3:
+	if is_leader or _leader == null or not is_instance_valid(_leader):
+		return _drift_dir
+	return _leader.herd_drift_dir()
+
 ## 脚下这一格的吃草效率 0.15–1.0（GRASSLAND §2.2）。没有草场时按满效率。
 func graze_efficiency() -> float:
 	if _grassland == null:
@@ -290,7 +323,10 @@ func graze_efficiency() -> float:
 	return _grassland.efficiency(global_position)
 
 func _decay_fear(delta: float) -> void:
-	fear *= pow(0.5, delta / species.fear_half_life)
+	var half_life: float = species.fear_half_life
+	if not _pressured:
+		half_life *= species.release_decay_scale
+	fear *= pow(0.5, delta / half_life)
 
 func _apply_player_pressure(delta: float) -> void:
 	if _player == null:
@@ -300,17 +336,21 @@ func _apply_player_pressure(delta: float) -> void:
 	var d := away.length()
 	if d < 0.01:
 		return
+	# 逃离区随情绪变大（BEHAVIOR §6.0）：惊了的牛离得更远就开始动。
+	var zone_scale: float = 1.0 + fear * species.flight_zone_fear_scale
 	var driving: bool = _player.get("driving") == true
 	if driving:
-		apply_area_pressure(_player.global_position, species.drive_radius, species.drive_fear_per_sec * delta)
+		apply_area_pressure(_player.global_position, species.drive_radius * zone_scale, species.drive_fear_per_sec * delta)
 		return
-	if d > species.pressure_radius:
+	var radius: float = species.pressure_radius * zone_scale
+	if d > radius:
 		return
 	var speed: float = _player.horizontal_speed()
 	if speed < 0.1:
 		return
+	_pressured = true
 	var running: bool = speed > 3.0
-	var falloff: float = 1.0 - d / species.pressure_radius
+	var falloff: float = 1.0 - d / radius
 	_external_push += away.normalized() * (species.pressure_push_run if running else species.pressure_push_walk) * falloff
 	if running:
 		add_fear(species.pressure_fear_run * falloff * delta, _player.global_position)
@@ -329,16 +369,33 @@ func apply_area_pressure(source: Vector3, radius: float, fear_amount: float) -> 
 	var d := away.length()
 	if d > radius:
 		return
+	_pressured = true
 	var falloff := 1.0 - d / radius
 	var dir := away.normalized() if d > 0.01 else Vector3.FORWARD
 	add_fear(fear_amount * falloff, source)
 	if state == State.FLEE or fear >= species.fear_threshold * boldness:
 		return
+	dir = _balance_direction(dir)
 	_nudge_target = global_position + dir * lerpf(species.nudge_min_distance, species.nudge_max_distance, falloff)
 	if state == State.NUDGE:
 		_state_time_left = 4.0
 	else:
 		_enter(State.NUDGE)
+
+## 平衡点（BEHAVIOR §6.0，low-stress stockmanship）：压力源在肩后 → 牛向前走，只略微偏离源点一侧；
+## 压力源在肩前 → 牛折返，背离源点。石头落在牛前方也是同一条规则："落在牛想去的方向前面，牛就折回来"。
+## away 是背离源点的单位向量。
+func _balance_direction(away: Vector3) -> Vector3:
+	var forward := -global_basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.01:
+		return away
+	forward = forward.normalized()
+	# away 与前方同向 → 源在后方；反向 → 源在前方。
+	var behind := forward.dot(away)
+	if behind > 0.0:
+		return (forward + away * species.balance_side_bias).normalized()
+	return away
 
 ## 乌尔朵落地（BEHAVIOR §6.2）。推力与惊吓随距离衰减。
 func apply_sling_impact(point: Vector3, radius: float, fear_amount: float) -> void:
@@ -388,26 +445,49 @@ func _resolve_leader() -> void:
 	if _leader == null:
 		_leader = get_tree().get_first_node_in_group("lead_cow") as Cow
 
+## 头牛是否在"有目的移动"（BEHAVIOR §1 跟随态的进入条件）：挑草场、归栏、被赶都算，惊跑不算。
+func _leader_moving() -> bool:
+	if _leader == null or not is_instance_valid(_leader) or _leader == self:
+		return false
+	if _leader.state != State.WANDER and _leader.state != State.NUDGE and _leader.state != State.FOLLOW:
+		return false
+	return Vector2(_leader.velocity.x, _leader.velocity.z).length() > 0.3
+
+## 群当前处于移动档还是吃草档（BEHAVIOR §5.1）。头牛看自己，普通牛看头牛。
+func _moving_regime() -> bool:
+	if is_leader:
+		return (state == State.WANDER or state == State.NUDGE) and Vector2(velocity.x, velocity.z).length() > 0.3
+	return _leader_moving() or state == State.FOLLOW or state == State.NUDGE
+
 func _should_follow_leader() -> bool:
 	if is_leader or _leader == null or not is_instance_valid(_leader):
 		return false
 	if _leader.state == State.FLEE:
 		return false
 	var d := _flat_distance_to(_leader.global_position)
-	return d > follow_start_distance() or (_leader.state == State.WANDER and d > species.follow_stop_distance)
+	return d > follow_start_distance() or (_leader_moving() and d > species.follow_stop_distance)
 
 func _follow_velocity() -> Vector3:
 	if _leader == null or not is_instance_valid(_leader):
 		return Vector3.ZERO
 	var to_leader := _leader.global_position - global_position
 	to_leader.y = 0.0
-	if to_leader.length() < species.follow_stop_distance:
+	var d := to_leader.length()
+	if d < species.follow_stop_distance:
 		_enter(State.GRAZE)
 		return Vector3.ZERO
-	return to_leader.normalized() * species.follow_speed * sociability
+	# 头牛停下了、自己也在她的活动范围内，就不必追到跟前。
+	if not _leader_moving() and d < follow_start_distance() * 0.7:
+		_enter(State.GRAZE)
+		return Vector3.ZERO
+	# 落得越远追得越急，追上了就放慢，别一头撞进她怀里。
+	var speed: float = species.follow_speed * sociability * clampf(d / (species.follow_stop_distance * 2.0), 0.6, 1.5)
+	return to_leader.normalized() * speed
 
 func _herd_push() -> Vector3:
 	var push := Vector3.ZERO
+	var moving := _moving_regime()
+	var sep_r: float = species.separation_radius_moving if moving else species.separation_radius
 	for node in get_tree().get_nodes_in_group("cows"):
 		var other := node as Cow
 		if other == null or other == self:
@@ -415,15 +495,18 @@ func _herd_push() -> Vector3:
 		var away := global_position - other.global_position
 		away.y = 0.0
 		var d := away.length()
-		if d > 0.01 and d < species.separation_radius:
-			push += away.normalized() * (1.0 - d / species.separation_radius) * species.separation_push
+		if d > 0.01 and d < sep_r:
+			push += away.normalized() * (1.0 - d / sep_r) * species.separation_push
 	if not is_leader and _leader != null and is_instance_valid(_leader):
 		var to_leader := _leader.global_position - global_position
 		to_leader.y = 0.0
 		var d := to_leader.length()
-		if d > species.cohesion_start:
-			var t := clampf((d - species.cohesion_start) / maxf(0.1, follow_start_distance() - species.cohesion_start), 0.0, 1.0)
-			push += to_leader.normalized() * t * species.cohesion_push * sociability
+		# 移动档：拉力更强、起得更早，群收拢成一团跟着走。
+		var start: float = species.cohesion_start * (0.5 if moving else 1.0)
+		var strength: float = species.cohesion_push * (species.cohesion_moving_scale if moving else 1.0)
+		if d > start:
+			var t := clampf((d - start) / maxf(0.1, follow_start_distance() - start), 0.0, 1.0)
+			push += to_leader.normalized() * t * strength * sociability
 	elif is_leader:
 		var centroid := _herd_centroid()
 		if centroid != Vector3.INF:
@@ -450,21 +533,37 @@ func _herd_centroid() -> Vector3:
 			n += 1
 	return sum / n if n > 0 else Vector3.INF
 
+## 惊吓传染分级（BEHAVIOR §5.2）：单头惊跑只让邻居抬头警觉；半径内已有别的牛在惊跑
+## （两头以上同时惊）才连锁，全群炸开。炸开后各自跑不远，靠跟随机制自行重聚。
 func _spread_fear() -> void:
 	if _has_spread_fear:
 		return
 	_has_spread_fear = true
+	var neighbours: Array[Cow] = []
+	var fleeing_nearby := 0
 	for node in get_tree().get_nodes_in_group("cows"):
 		var other := node as Cow
 		if other == null or other == self:
 			continue
-		var away := other.global_position - global_position
-		away.y = 0.0
-		var d := away.length()
-		if d <= species.contagion_radius:
-			# 传染的是同一个威胁位置；没有来源时把自己当来源。
-			var source := _threat_pos if _has_threat else global_position
+		if _flat_distance_to(other.global_position) <= species.contagion_radius:
+			neighbours.append(other)
+			if other.state == State.FLEE:
+				fleeing_nearby += 1
+	var chain := fleeing_nearby >= 1
+	var source := _threat_pos if _has_threat else global_position
+	for other in neighbours:
+		if chain:
 			other.add_fear(species.contagion_fear / maxf(0.2, other.boldness), source)
+		else:
+			other.add_fear(species.contagion_fear_single / maxf(0.2, other.boldness), source)
+			other.alert_from(source)
+
+## 邻居惊跑时抬头张望：平静态进入警觉，不跑。
+func alert_from(source: Vector3) -> void:
+	if state == State.GRAZE or state == State.REST or state == State.WANDER:
+		_threat_pos = source
+		_has_threat = true
+		_enter(State.ALERT)
 
 ## 头牛挑草场（GRASSLAND §3）：直接返回选中的目标点。
 func _pick_pasture() -> Vector3:

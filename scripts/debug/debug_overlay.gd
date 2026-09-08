@@ -133,7 +133,8 @@ func _process(delta: float) -> void:
 				var spread := 0.0
 				for cow in cows:
 					spread = maxf(spread, cow.global_position.distance_to(centroid))
-				print("SPREAD cells=%d  max_radius=%.1fm" % [occupied.size(), spread])
+				var lead := get_tree().get_first_node_in_group("lead_cow")
+				print("SPREAD cells=%d  max_radius=%.1fm  centroid=(%.0f,%.0f)  leader=%s eff=%.2f" % [occupied.size(), spread, centroid.x, centroid.z, lead.state_name() if lead else "-", lead.graze_efficiency() if lead else 0.0])
 				var effsum := 0.0
 				for cow in cows:
 					effsum += cow.graze_efficiency()
@@ -159,7 +160,14 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 	if Input.is_action_just_pressed("debug_toggle"):
 		visible = not visible
-	Clock.time_scale = _forced_scale if _forced_scale > 0.0 else (20.0 if Input.is_action_pressed("debug_time_fast") else 1.0)
+	# --time-scale 走引擎整体缩放：物理、状态机、时钟、吃草一起加速，牛相对一天的移动才是真的。
+	# 只加速 Clock 会让牛"相对一天"几乎不动而草照常被吃，饱腹度必崩（STATUS 踩过的坑）。
+	# T 键的 20 倍仍只加速时钟，那是看光色用的，不用来验证平衡。
+	if _forced_scale > 0.0:
+		Engine.time_scale = _forced_scale
+		Clock.time_scale = 1.0
+	else:
+		Clock.time_scale = 20.0 if Input.is_action_pressed("debug_time_fast") else 1.0
 	if _settlement_timer > 0.0:
 		_settlement_timer -= delta
 		if _settlement_timer <= 0.0:
