@@ -54,6 +54,15 @@ func _ready() -> void:
 func _on_day_ended(_day: int) -> void:
 	daily_regrow()
 
+## 把一个点钳回地图内，留一点边距（牛不该走到地面碰撞体的边沿）。
+func clamp_to_map(p: Vector3, margin: float = 8.0) -> Vector3:
+	var lim := _half - margin
+	return Vector3(clampf(p.x, -lim, lim), p.y, clampf(p.z, -lim, lim))
+
+func is_inside(p: Vector3, margin: float = 8.0) -> bool:
+	var lim := _half - margin
+	return absf(p.x) <= lim and absf(p.z) <= lim
+
 ## 世界坐标 → 格坐标，越界的钳到边缘。
 func cell_at(world_pos: Vector3) -> Vector2i:
 	var x := int(floor((world_pos.x + _half) / cell_size))

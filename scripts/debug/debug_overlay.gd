@@ -1,6 +1,11 @@
 ## 灰盒调试信息。F12 开关，T 键加速时钟。不是 UI，M3 前不打磨。
 extends CanvasLayer
 
+## 快进上限。再快物理步长会被引擎钳到 0.5 s，牛一步下落一米多，
+## 直接穿过地面碰撞体然后无限坠落——这是快进的假象，不是游戏里的 bug。
+## 快进是用来验证草场与结算数值的，不是用来验证移动的。
+const MAX_DEBUG_TIME_SCALE := 12.0
+
 @onready var _label: Label = $Label
 var _shot_path: String = ""
 var _shot_timer: float = 2.0
@@ -16,6 +21,8 @@ var _grass_timer: float = 0.0
 var _log_timer: float = 0.0
 var _test_sling: bool = false
 var _test_drive: bool = false
+## --quit-after-days=N：第 N 天结算打印后退出。按帧数的 --quit-after 在引擎缩放下不可靠。
+var _quit_after_days: int = 0
 var _test_sling_timer: float = 3.0
 var _settlement_text: String = ""
 
@@ -25,6 +32,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--time="):
 			Clock.time_of_day = float(a.trim_prefix("--time="))
+		if a.begins_with("--quit-after-days="):
+			_quit_after_days = int(a.trim_prefix("--quit-after-days="))
 		if a == "--test-drive":
 			_test_drive = true
 		if a == "--test-sling":
@@ -52,7 +61,8 @@ func _ready() -> void:
 			if p and xz.size() == 2:
 				p.global_position = Vector3(float(xz[0]), 1.0, float(xz[1]))
 		if a.begins_with("--time-scale="):
-			_forced_scale = float(a.trim_prefix("--time-scale="))
+			# 上限见 MAX_DEBUG_TIME_SCALE。
+			_forced_scale = minf(float(a.trim_prefix("--time-scale=")), MAX_DEBUG_TIME_SCALE)
 		if a.begins_with("--shot-delay="):
 			_shot_timer = float(a.trim_prefix("--shot-delay="))
 		if a.begins_with("--screenshot="):

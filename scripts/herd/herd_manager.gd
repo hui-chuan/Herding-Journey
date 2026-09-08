@@ -5,6 +5,9 @@ extends Node
 const COW_SCENE := preload("res://scenes/cow.tscn")
 ## 起始 1 头头牛 + 4 头普通牛（DECISIONS D16）。
 @export var herd_size: int = 5
+## 起始群生成在围栏里：一天从出栏开始（DAY_CYCLE §3.1）。
+## 留空则回落到 spawn_center。
+@export var spawn_in_pen: bool = true
 @export var spawn_center := Vector3(8.0, 1.0, -8.0)
 @export var spawn_radius: float = 7.0
 @export var seed: int = 21
@@ -43,12 +46,19 @@ func load_from_save(cow_rows: Array) -> void:
 func _roll_starting_herd() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
+	var centre := spawn_center
+	var radius := spawn_radius
+	var pen := get_tree().get_first_node_in_group("pen") as Pen
+	if spawn_in_pen and pen != null:
+		centre = pen.global_position
+		# 留出边距，别把牛塞进栅栏里。
+		radius = maxf(2.0, pen.size * 0.5 - 2.0)
 	for i in herd_size:
 		var d := CowData.roll(rng, _next_id, species, i == 0)
 		_next_id += 1
 		var angle := rng.randf() * TAU
-		var dist := sqrt(rng.randf()) * spawn_radius
-		d.position = spawn_center + Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
+		var dist := sqrt(rng.randf()) * radius
+		d.position = centre + Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
 		d.position.y = 1.0
 		herd.append(d)
 

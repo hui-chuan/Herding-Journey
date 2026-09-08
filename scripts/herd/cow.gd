@@ -14,6 +14,10 @@ const SATIETY_DECAY := 0.0001
 ## 头牛挑草场的环形采样：内环避免选中脚下这一格（原地打转），外环用 leader_search_radius。
 const LEADER_PICK_MIN_RADIUS := 15.0
 const LEADER_PICK_SAMPLES := 12
+## 下落速度上限（m/s）。牛不会跳，这个值只是防止穿透地面。
+const MAX_FALL_SPEED := 12.0
+## 掉到这个高度以下就是穿模了，捞回地面（D18：白天不该出事）。
+const FLOOR_RESCUE_Y := -3.0
 
 ## 这头牛的持久数据（ARCHITECTURE §2.1）。入树前由 HerdManager 设好。
 ## 留空则 _ready 里自己抽一份，方便在编辑器里单独拖一头牛出来试。
@@ -155,7 +159,9 @@ func _physics_process(delta: float) -> void:
 	var next := current.move_toward(desired, rate * delta)
 	velocity.x = next.x
 	velocity.z = next.z
-	velocity.y = 0.0 if is_on_floor() else velocity.y - _gravity * delta
+	# 下落速度封顶：物理步长被引擎钳到 0.5 s 时（快进、或一次卡顿），
+	# 无封顶的重力一步就能把牛推进地面碰撞体以下，然后再也回不来。
+	velocity.y = 0.0 if is_on_floor() else maxf(velocity.y - _gravity * delta, -MAX_FALL_SPEED)
 
 	var flat := Vector3(velocity.x, 0.0, velocity.z)
 	if flat.length_squared() > 0.04:
@@ -163,6 +169,15 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_slide_along_walls()
+	if global_position.y < FLOOR_RESCUE_Y:
+		global_position.y = 1.0
+		velocity.y = 0.0
+	# 地图边界：一处兜底，胜过在漫步、跟随、惊跑、被推四条路径上各写一遍。
+	# 走出地面碰撞体就会掉下去，而白天不该出事（D18）。
+	if _grassland != null and not _grassland.is_inside(global_position):
+		global_position = _grassland.clamp_to_map(global_position)
+		velocity.x = 0.0
+		velocity.z = 0.0
 
 	_state_time_left -= delta
 	if _state_time_left <= 0.0:
@@ -300,7 +315,7 @@ func _pick_wander_target() -> void:
 		if score > best_score:
 			best_score = score
 			best = cand
-	_wander_target = best
+	_wander_target = _grassland.clamp_to_map(best) if _grassland != null else best
 
 ## 吃草时从所在格扣草、涨饱腹；其余时间缓慢消耗（GRASSLAND §2.1）。
 ## 用时钟缩放后的 delta：草的消耗属于"一天里发生的事"，快进时钟时它要跟着走（T17）。
@@ -621,7 +636,9 @@ func _pick_pasture() -> Vector3:
 		return global_position
 	# 一次走 15–45 m 里的一段，不是一步到位；到了再挑下一块。
 	var step := randf_range(LEADER_PICK_MIN_RADIUS, species.leader_search_radius) * 0.5
-	return global_position + dir * step
+	var target := global_position + dir * step
+	# 别把目标定到地图外：走出地面碰撞体就会掉下去（D18：白天不该出事）。
+	return _grassland.clamp_to_map(target) if _grassland != null else target
 
 ## 头牛挑草场（GRASSLAND §3）：向草场问一个目标格，返回指向它的方向。
 ## 没有草场数据时回落到噪声，保证灰盒里也能跑。
@@ -635,6 +652,13 @@ func _best_grass_dir() -> Vector3:
 		bias_dir = home_target() - global_position
 		bias_dir.y = 0.0
 		bias_dir = bias_dir.normalized()
+	elif Clock.phase == Clock.Phase.DAWN and is_in_pen():
+		# 出栏（DAY_CYCLE §3.1）：清晨还在栏里的就朝栏外挑草场，其余牛按跟随力跟出去。
+		# 不做"开门""赶出去"的玩法——玩家什么都不用干，群自己散出去。
+		var out := global_position - home_target()
+		out.y = 0.0
+		bias_dir = out.normalized() if out.length() > 0.5 else Vector3(randf() - 0.5, 0.0, randf() - 0.5).normalized()
+		home = 1.0
 	var target := _grassland.best_cell_near(
 		global_position,
 		LEADER_PICK_MIN_RADIUS,
