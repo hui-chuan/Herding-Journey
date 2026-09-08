@@ -23,17 +23,21 @@ var _test_sling: bool = false
 var _test_drive: bool = false
 ## --quit-after-days=N：第 N 天结算打印后退出。按帧数的 --quit-after 在引擎缩放下不可靠。
 var _quit_after_days: int = 0
+## 无头验证用：结算界面弹出后自动按"睡觉"。有窗口时不要开，那样看不见界面。
+var _auto_sleep: bool = false
 var _test_sling_timer: float = 3.0
 var _settlement_text: String = ""
 
 func _ready() -> void:
-	Clock.day_ended.connect(_on_day_ended)
 	Clock.grace_started.connect(_on_grace_started)
+	Clock.day_ended.connect(_on_day_ended)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--time="):
 			Clock.time_of_day = float(a.trim_prefix("--time="))
 		if a.begins_with("--quit-after-days="):
 			_quit_after_days = int(a.trim_prefix("--quit-after-days="))
+		if a == "--auto-sleep":
+			_auto_sleep = true
 		if a == "--test-drive":
 			_test_drive = true
 		if a == "--test-sling":
@@ -197,11 +201,7 @@ func _process(delta: float) -> void:
 		Engine.max_physics_steps_per_frame = maxi(8, int(ceil(_forced_scale)) * 2)
 	else:
 		Clock.time_scale = 20.0 if Input.is_action_pressed("debug_time_fast") else 1.0
-	if _settlement_timer > 0.0:
-		_settlement_timer -= delta
-		if _settlement_timer <= 0.0:
-			Clock.start_next_day()
-			_settlement_text = ""
+
 	for cow in get_tree().get_nodes_in_group("cows"):
 		cow.get_node("StateMarker").visible = visible
 	if not visible:
@@ -224,54 +224,25 @@ func _process(delta: float) -> void:
 	lines.append("WASD 移动  Shift 跑  Q/E 或右键拖拽转视角  左键甩石  F 吆喝  Tab 远/近  T 快进  F12 隐藏")
 	_label.text = "\n".join(lines)
 
+## 结算流程在 DaySettlement 里，调试层只旁观：显示一行摘要，
+## 以及在无头验证时替玩家按下"睡觉"（否则结算界面会一直等着，天数不会推进）。
+func _on_day_ended(day: int) -> void:
+	_settlement_text = "day %d 结算" % day
+	if _quit_after_days > 0 and day >= _quit_after_days:
+		# 等 DaySettlement 打印完 SETTLE 行再退出。
+		await get_tree().process_frame
+		get_tree().quit()
+		return
+	if _auto_sleep:
+		await get_tree().create_timer(0.2).timeout
+		var screen := get_tree().get_first_node_in_group("settlement_screen")
+		if screen != null and screen.has_method("sleep_now"):
+			screen.sleep_now()
+
 func _on_grace_started() -> void:
 	_settlement_text = "天黑了，还有 %d 秒宽限" % int(Clock.grace_sec)
 
 ## 天黑结算：统计存栏、产出、写回数据、存盘（DAY_CYCLE §4，ARCHITECTURE §4.2）。
-func _on_day_ended(day: int) -> void:
-	var hm := get_tree().get_first_node_in_group("herd_manager")
-	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
-	var player := get_tree().get_first_node_in_group("player") as Node3D
-	if hm == null:
-		return
-	hm.write_back_all()
-
-	var penned: Array = []
-	var lost: Array = []
-	for node in get_tree().get_nodes_in_group("cows"):
-		var cow := node as Cow
-		if cow.is_in_pen():
-			cow.data.lost_nights = 0
-			penned.append(cow.data)
-		else:
-			# 连续两晚未归栏，第二晚起有概率遭狼（D5）。第一晚绝不死。
-			cow.data.lost_nights += 1
-			lost.append(cow.data)
-
-	var summary := GameState.settle(penned)
-	var died: Array = []
-	for d in lost:
-		var c := d as CowData
-		if c.lost_nights >= 2 and randf() < 0.25:
-			c.alive = false
-			GameState.death_marks.append(c.position)
-			died.append(c)
-
-	SaveIO.save(GameState.collect(hm.herd, gl, player))
-
-	var parts: PackedStringArray = ["day %d  存栏 %d/%d  奶 +%d  毛 +%d" % [
-		day, penned.size(), penned.size() + lost.size(), summary["milk"], summary["wool"]]]
-	for c in lost:
-		if (c as CowData).alive:
-			parts.append("%s 没有回来" % _cow_label(c))
-	for c in died:
-		parts.append("%s 死了" % _cow_label(c))
-	_settlement_text = "  ·  ".join(parts)
-	print("SETTLE %s" % _settlement_text)
-	_settlement_timer = 6.0
-
-func _cow_label(d: CowData) -> String:
-	return d.display_name if d.display_name != "" else "Cow%d" % d.id
 
 ## 验证真正的落盘往返（ARCHITECTURE §4）：写盘 → 改状态 → 读盘 → 比对。
 func _run_save_roundtrip() -> void:

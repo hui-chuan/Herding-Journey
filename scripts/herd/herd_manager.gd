@@ -97,3 +97,31 @@ func write_back_all() -> void:
 
 func living() -> Array[CowData]:
 	return herd.filter(func(d: CowData) -> bool: return d.alive)
+
+
+## 次日开始：清掉死牛，走失的牛投放到它昨晚位置附近的高草量格（DAY_CYCLE §5.1），
+## 归栏的牛回到围栏里。走失的牛不属于任何群，要玩家自己去找回来。
+func begin_new_day() -> void:
+	var gl := get_tree().get_first_node_in_group("grassland") as Grassland
+	var pen := get_tree().get_first_node_in_group("pen") as Pen
+	for node in get_tree().get_nodes_in_group("cows"):
+		var cow := node as Cow
+		var d := cow.data
+		if d == null:
+			continue
+		if not d.alive:
+			cow.queue_free()
+			continue
+		if d.lost_nights > 0:
+			# 整夜在找草，会挪到附近草好的地方。
+			if gl != null:
+				d.position = gl.best_cell_near(d.position, 20.0, 60.0, 10, Vector3.ZERO, Vector3.ZERO, 0.0)
+				d.position = gl.clamp_to_map(d.position)
+		elif pen != null:
+			var a := randf() * TAU
+			var r := sqrt(randf()) * maxf(2.0, pen.size * 0.5 - 2.0)
+			d.position = pen.global_position + Vector3(cos(a) * r, 0.0, sin(a) * r)
+		d.position.y = 1.0
+		cow.global_position = d.position
+		cow.velocity = Vector3.ZERO
+		cow.satiety = d.satiety

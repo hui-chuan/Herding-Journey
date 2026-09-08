@@ -1,0 +1,8 @@
+keys,zh_CN,en
+settlement_day,第 {day} 天,Day {day}
+settlement_stock,存栏,Penned
+settlement_milk,奶,Milk
+settlement_wool,毛,Wool
+settlement_sleep,睡觉,Sleep
+settlement_lost,{name}没有回来,{name} did not come back
+settlement_died,{name}死了,{name} died

@@ -41,7 +41,11 @@ scripts/herd/cow.gd           牛：状态机、性格、惊吓、群体力、�
 scripts/herd/yak_body.gd      牦牛外观，花色按种子
 scripts/herd/herd_manager.gd  按 CowData 生成牛群（5 头，1 头头牛）；spawn/spawn_all/write_back_all
 scenes/cow.tscn               牛的预制体：碰撞体 + 外观 + 状态小球
-scripts/debug/debug_overlay.gd 调试层与命令行参数
+scripts/ui/settlement_screen.gd 结算界面：一屏，居中，字少，唯一按钮是"睡觉"
+scripts/ui/day_settlement.gd  结算流程：统计存栏、算产出、判走失与死亡、存档、开界面
+scenes/ui/settlement_screen.tscn 结算界面场景
+locale/ui.csv                 UI 文案（zh_CN / en），Godot 生成 .translation
+scripts/debug/debug_overlay.gd 调试层与命令行参数（不再承载游戏流程）
 ```
 
 ## 物理层
@@ -91,6 +95,8 @@ $G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=
 $G --headless --path . --quit-after 900 -- --test-save                      # 牛与草场的存档往返自检
 $G --path . -- --zoom=2 --test-bare --shot-delay=8 --screenshot=out.png     # 远档 + 吃秃一片，检验草量可视化
 $G --headless --path . --quit-after 900 -- --test-load                      # 只读一次存档（用于验证迁移/拒绝路径）
+# 无头跑多天：--auto-sleep 替玩家按"睡觉"，否则结算界面会一直等着，天数不推进
+$G --headless --path . --quit-after 400000 -- --time=0.97 --time-scale=12 --auto-sleep --quit-after-days=3
 ```
 
 游戏内：F12 调试层开关，T 键 20 倍快进时钟，F 吆喝，Tab 三档视角循环。
@@ -116,7 +122,10 @@ $G --headless --path . --quit-after 900 -- --test-load                      # �
   `HerdManager` 按数据生成；存档往返已验证（5 头牛的性格/头牛/外观种子/位置与 1600 格草场全部一致，JSON 约 36 KB）。
 - ~~`SaveIO` / `GameState` 与真正的读写盘未做~~ → **已完成**。落盘往返验证：写盘 → 故意破坏内存状态
   → 读盘，牛/草场/现金库存全部还原，5 头牛无重复。未来版本号的存档会被拒绝读取并报错，不静默丢档。
-- 结算已接存档与走失/死亡判定（调试层内），正式结算界面（DAY_CYCLE §4）仍未做。
+- ~~正式结算界面未做~~ → **已完成**（`scenes/ui/settlement_screen.tscn`）。结算流程从调试层搬进
+  `day_settlement.gd`；文案全部走 `tr()`（T18）。次日投放已实现：走失的牛出现在它昨晚位置
+  附近的高草量格，归栏的牛回到围栏里。
+- 藏文渲染已验证（T18）：内置 ICU/HarfBuzz 整形正确，不需要额外字体资产。
 - 出栏（DAY_CYCLE §3.1）已实现：群生成在栏内，清晨头牛朝栏外挑草场，其余跟出去。
 - 牛有下落速度上限、掉出地面的捞回、以及地图边界兜底（一处收口，不在四条移动路径上各写一遍）。
 - 场景仍是单一的 `m1_sandbox.tscn`，`main/world/ui` 三层未拆（ARCHITECTURE §1.1）。
@@ -126,6 +135,11 @@ $G --headless --path . --quit-after 900 -- --test-load                      # �
 - 惊跑传染只传给半径内的牛，远端不受影响；"赶太猛整群炸"若要，可在区域压力里加传递。
 
 ## 踩过的坑
+
+- **`project.godot` 的翻译列表键名要带 `locale/` 前缀**：section 是 `[internationalization]`，
+  键必须写成 `locale/translations=`，写成 `translations=` 不报错但一条都不加载
+  （`TranslationServer.get_loaded_locales()` 返回空，`tr()` 原样吐出 key）。
+  另外列表要填 Godot 从 CSV 生成的 `.translation` 文件，不是 CSV 本身。
 
 - 场景里的节点变换曾被编辑器误改（拖 gizmo 后保存），表现为人物和牛的朝向、位置异常。改场景前看一眼 git diff。
 - 用 duplicate 复制节点时材质资源是共享的，每个实例要 `duplicate()` 一份材质；实例的属性要在 `add_child` 之前配置好，否则 `_ready` 按模板值初始化。

@@ -14,6 +14,8 @@
 [ext_resource type="Script" path="res://scripts/herd/herd_manager.gd" id="14_herd"]
 [ext_resource type="Resource" path="res://data/species/yak.tres" id="15_yak"]
 [ext_resource type="Script" path="res://scripts/world/grassland.gd" id="16_grassland"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settlement_screen.tscn" id="17_settle_ui"]
+[ext_resource type="Script" path="res://scripts/ui/day_settlement.gd" id="18_settle"]
 [ext_resource type="Script" path="res://scripts/world/pen.gd" id="15_pen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
@@ -137,6 +139,14 @@ far = 1200.0
 [node name="HerdManager" type="Node" parent="."]
 script = ExtResource("14_herd")
 species = ExtResource("15_yak")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="SettlementScreen" parent="UI" instance=ExtResource("17_settle_ui")]
+
+[node name="DaySettlement" type="Node" parent="."]
+script = ExtResource("18_settle")
+screen_path = NodePath("../UI/SettlementScreen")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1183399508]
 script = ExtResource("6_debug")

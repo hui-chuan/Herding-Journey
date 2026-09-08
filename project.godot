@@ -107,6 +107,8 @@ debug_time_fast={
 [internationalization]
 
 locale/fallback="zh_CN"
+locale/test="zh_CN"
+locale/translations=PackedStringArray("res://locale/ui.zh_CN.translation", "res://locale/ui.en.translation")
 
 [layer_names]
 
