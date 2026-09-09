@@ -37,6 +37,10 @@ extends Resource
 @export var separation_radius: float = 8.0
 @export var separation_radius_moving: float = 4.0
 @export var separation_push: float = 2.0
+## 移动档里"被后方的牛顶到时往前让"的程度 0–1（BEHAVIOR §5.3）。
+## 0 = 纯对称排斥（后牛被推回来，赶不动）；1 = 完全沿自己前方让开。
+## 只在移动档生效，吃草档仍是对称的——那时谁也不在赶谁。
+@export_range(0.0, 1.0) var separation_forward_bias: float = 0.75
 ## 聚合：离头牛超过 cohesion_start 起有拉力，到 follow_start_distance 时达到 cohesion_push。
 @export var cohesion_start: float = 10.0
 @export var cohesion_push: float = 0.8

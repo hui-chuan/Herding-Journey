@@ -17,14 +17,37 @@ static func neighbours_of(cow: Cow) -> Array:
 
 ## 分离：邻居太近就推开。半径远大于牛身长——防重叠是碰撞体的事，
 ## 这个力的作用是把群铺开到足以覆盖多个草场格（BEHAVIOR §5 的实测定档）。
-static func separation(cow: Cow, neighbours: Array, radius: float, push: float) -> Vector3:
+##
+## 被后方的牛顶到时不后退，而是顺着自己的前方让开（BEHAVIOR §5.3）。
+## 对称的排斥力会让"从后面赶"失效：后牛被前牛推回来，走两步就掉头，
+## 整群顶在原地。真实牛群里压力是**向前传递**的——被后面挤到的牛往前让，
+## 一路传到最前面。这和 §6.0 玩家施压的平衡点是同一条规律（D21），
+## 只是压力源换成了同类。
+##
+## `forward_bias` = 0 退化回纯对称排斥（吃草档：谁也不在赶谁，让位没有方向）。
+static func separation(cow: Cow, neighbours: Array, radius: float, push: float, forward_bias: float = 0.0) -> Vector3:
 	var force := Vector3.ZERO
+	var forward := -cow.global_basis.z
+	forward.y = 0.0
+	var has_forward: bool = forward.length_squared() > 0.01
+	if has_forward:
+		forward = forward.normalized()
 	for other in neighbours:
 		var away: Vector3 = cow.global_position - (other as Cow).global_position
 		away.y = 0.0
 		var d := away.length()
-		if d > 0.01 and d < radius:
-			force += away.normalized() * (1.0 - d / radius) * push
+		if d <= 0.01 or d >= radius:
+			continue
+		var dir := away.normalized()
+		var o := other as Cow
+		# away 与前方同向 → 邻居在我后方 → 让开的方向偏向我的前方。
+		if has_forward and forward_bias > 0.0 and forward.dot(dir) > 0.0:
+			dir = forward.lerp(dir, 1.0 - forward_bias).normalized()
+		var w := 1.0 - d / radius
+		# 后面那头正被赶、我没有 → 我给它让路，它不该被我顶回去（BEHAVIOR §5.3）。
+		if o.state == Cow.State.NUDGE and cow.state != Cow.State.NUDGE:
+			w *= 0.35
+		force += dir * w * push
 	return force
 
 ## 聚合：普通牛指向头牛。近处几乎为零，所以牛群是松散的。

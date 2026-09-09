@@ -180,6 +180,11 @@ func _physics_process(delta: float) -> void:
 		velocity.z = 0.0
 
 	_state_time_left -= delta
+	# 还在被赶就不让 NUDGE 超时退回 GRAZE：一退回，前进的意图当场消失，
+	# 只剩分离力把牛往后推（BEHAVIOR §5.3）。被前面的牛挡住、暂时出了
+	# drive_radius 的那一头尤其明显——它正是"走一点就掉头"的那头。
+	if state == State.NUDGE and _pressured:
+		_state_time_left = maxf(_state_time_left, 0.5)
 	if _state_time_left <= 0.0:
 		_on_state_timeout()
 
@@ -336,8 +341,29 @@ func _update_satiety(delta: float) -> void:
 
 ## 顶在栅栏上时沿栅栏滑向目标那一侧，而不是一直往里顶（DAY_CYCLE §3，"卡栅栏"）。
 ## 只对有目标的移动态生效；吃草被推到栅栏上不管，推力一消它就停了。
+## 沿墙滑行只对**静态障碍**（围栏、石块）有意义。
+## 撞到的是另一头牛或玩家时必须跳过：牛与牛的间距归分离力管（BEHAVIOR §5），
+## 而这里的切向兜底会在"正顶着前面那头牛"时退化成随便挑一侧推 1.5，
+## 方向与前进意图无关——从后面赶一列牛，中间那头就是被这个力顶回去的。
+func _hits_only_movers() -> bool:
+	for i in get_slide_collision_count():
+		var c := get_slide_collision(i)
+		if c == null:
+			continue
+		var col := c.get_collider()
+		# 牛与玩家都是会动的，绕不出去也不该绕：牛的间距归分离力，
+		# 玩家的推挤归施压。只有静态障碍（围栏、石块）才需要沿墙滑行。
+		if col is Cow:
+			continue
+		if col is Node and (col as Node).is_in_group("player"):
+			continue
+		return false
+	return true
+
 func _slide_along_walls() -> void:
 	if not is_on_wall():
+		return
+	if _hits_only_movers():
 		return
 	var goal := Vector3.INF
 	match state:
@@ -421,9 +447,35 @@ func add_fear(amount: float, threat_pos: Vector3) -> void:
 	_threat_pos = threat_pos
 	_has_threat = true
 
+## 压力在群里向前传递（BEHAVIOR §5.3）。
+## 只让半径内的牛动，"从后面赶一列牛"是不成立的：前面的牛挡住了后面的，
+## 队伍中段的牛离玩家超过 drive_radius，NUDGE 的 4 s 一到就退回 GRAZE，
+## 只剩分离力把它往后推——玩家看到的就是"走一点又掉头后退"。
+## 真实牛群里被顶到的牛会往前让，一路传到最前面。这里让正在被赶的牛
+## 把压力转给它前方的邻居，源点仍是原始压力源（保持方向一致，不会绕圈）。
+func propagate_pressure(source: Vector3, radius: float, fear_amount: float) -> void:
+	var forward := _nudge_target - global_position
+	forward.y = 0.0
+	if forward.length() < 0.5:
+		return
+	forward = forward.normalized()
+	for node in CowForces.neighbours_of(self):
+		var other := node as Cow
+		var to_other := other.global_position - global_position
+		to_other.y = 0.0
+		var d := to_other.length()
+		# 只推前方 60° 锥内、一个身位到分离半径之间的邻居。
+		if d < 0.5 or d > species.separation_radius_moving * 1.5:
+			continue
+		if forward.dot(to_other / d) < 0.5:
+			continue
+		# 传下去的压力按距离衰减，且不再由它继续传递（一层，避免递归爆炸）。
+		other.apply_area_pressure(source, radius, fear_amount * 0.5, false)
+
 ## 区域压力（吆喝与乌尔朵共用）：源点半径内的牛背离源点挪开，越近挪越远，并获得惊吓。
 ## 已在挪开中则刷新目标，持续施压就持续前进；半径外的牛不受影响。
-func apply_area_pressure(source: Vector3, radius: float, fear_amount: float) -> void:
+## relay = 是否把压力继续传给前方的邻居（BEHAVIOR §5.3）。
+func apply_area_pressure(source: Vector3, radius: float, fear_amount: float, relay: bool = true) -> void:
 	var away := global_position - source
 	away.y = 0.0
 	var d := away.length()
@@ -441,6 +493,8 @@ func apply_area_pressure(source: Vector3, radius: float, fear_amount: float) -> 
 		_state_time_left = 4.0
 	else:
 		_enter(State.NUDGE)
+	if relay:
+		propagate_pressure(source, radius, fear_amount)
 
 ## 平衡点（BEHAVIOR §6.0，low-stress stockmanship）：压力源在肩后 → 牛向前走，只略微偏离源点一侧；
 ## 压力源在肩前 → 牛折返，背离源点。石头落在牛前方也是同一条规则："落在牛想去的方向前面，牛就折回来"。
@@ -552,7 +606,9 @@ func _herd_push() -> Vector3:
 	var moving := _moving_regime()
 	var sep_r: float = species.separation_radius_moving if moving else species.separation_radius
 	var neighbours := CowForces.neighbours_of(self)
-	var push := CowForces.separation(self, neighbours, sep_r, species.separation_push)
+	# 吃草档不给前向偏置：那时没有"赶"的方向，让位是对称的。
+	var bias: float = species.separation_forward_bias if moving else 0.0
+	var push := CowForces.separation(self, neighbours, sep_r, species.separation_push, bias)
 	if not is_leader:
 		# 移动档：拉力更强、起得更早，群收拢成一团跟着走。
 		var start: float = species.cohesion_start * (0.5 if moving else 1.0)

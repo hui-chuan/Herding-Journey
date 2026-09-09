@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | --- | --- |
 | `docs/DECISIONS.md` | 已定的技术（T*）与设计（D*）决策，一条一行。**改任何一条前先看这里，改了就更新这里** |
 | `docs/PRD.md` | 做什么、验收标准、里程碑 M1–M6 |
-| `docs/Herd_BEHAVIOR.md` | 牛的状态机、性格、头牛、群体力、玩家施压 |
+| `docs/Herd_BEHAVIOR.md` | 牛的状态机、性格、头牛、群体力、玩家施压、伙伴感（§10） |
 | `docs/GRASSLAND.md` | 草场网格数据结构、消耗与恢复、头牛挑草场 |
 | `docs/DAY_CYCLE.md` | 一天的时间结构、围栏、归栏、结算、走失与死亡 |
 | `docs/ARCHITECTURE.md` | 场景层级、Resource 驱动、存档格式、从现状到目标的重构路线（§6 是待办清单） |
@@ -107,7 +107,7 @@ CowData（结算与存档从 herd_manager.herd 取）
 
 ## 当前状态与下一步
 
-M1（手感）、M2（群体）灰盒完成；M3（可玩）部分完成。**待办清单在 `docs/ARCHITECTURE.md` §6 的表格**，`docs/STATUS.md` 的"已知缺口"是同一份的展开。当前主要缺口：`cow.gd` 拆分（546 行，规格见 ARCHITECTURE §5.1）、`main/world/ui` 三场景拆分、结算 UI、走失与死亡、`SaveIO`/`GameState`。
+M1（手感）、M2（群体）灰盒完成；M3（可玩）部分完成。**M3.5（伙伴感）已立项、未开始**——规格见 PRD 5.3.1 与 `Herd_BEHAVIOR.md` §10，决策见 D22。**待办清单在 `docs/ARCHITECTURE.md` §6 的表格**，`docs/STATUS.md` 的"已知缺口"是同一份的展开。当前主要缺口：`cow.gd` 拆分（546 行，规格见 ARCHITECTURE §5.1）、`main/world/ui` 三场景拆分、结算 UI、走失与死亡、`SaveIO`/`GameState`。
 
 ## 踩过的坑
 

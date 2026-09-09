@@ -1,6 +1,6 @@
 # STATUS.md — 代码现状
 
-更新：2026-09-07（设计文档补齐，M3 待办见文末）。记录"代码里现在有什么"，供接手与复盘。设计意图看 PRD 与 DECISIONS，行为规格看 Herd_BEHAVIOR。
+更新：2026-09-08（新增 M3.5 伙伴感，缺口见文末）。记录"代码里现在有什么"，供接手与复盘。设计意图看 PRD 与 DECISIONS，行为规格看 Herd_BEHAVIOR。
 
 仓库：https://github.com/hui-chuan/Herding-Journey · 引擎：Godot 4.7.2 stable
 
@@ -11,6 +11,7 @@
 | M1 手感 | 灰盒完成 | 玩家、相机、乌尔朵、单牛躲避 |
 | M2 群体 | 灰盒完成，调参中 | 状态机、性格、头牛、群体力（双档）、分级传染、吆喝、区域压力、平衡点、撤压奖励 |
 | M3 可玩 | 部分 | 时钟与光照有；畜栏与门有；归栏判定与简易结算有（调试层内）；草场数据层已做，真实比例下零秃格、饱腹度上升（可能偏易，M3 重定标） |
+| M3.5 伙伴感 | 未开始 | 鲜明习惯、身体表达、固定同伴、对人的熟悉（PRD 5.3.1 / BEHAVIOR §10 / D22） |
 | M4 循环 | 未开始 | 走失、存档 |
 
 ## 目录
@@ -75,7 +76,8 @@ GRAZE / WANDER / REST / FOLLOW / FLEE / ALERT / NUDGE。调试层开着时每头
 | 运动 | 平静上限 / 最小意图速度 | 3.0 / 0.25 m/s |
 | 运动 | 加速（平静 / 惊跑）/ 减速 | 3.0 / 8.0 / 3.5 |
 | 运动 | 漫步距离 / 惊跑最远 / 挪开距离 | 4–15 / 9 / 1.5–5 m |
-| 牛群 | 分离半径（吃草 / 移动）/ 力 | 8 / 4 m / 2.0 |
+| 牛群 | 分离半径（吃草 / 移动）/ 力 | 8 / **2.0** m / 2.0 |
+| 牛群 | 移动档前向让位偏置 | 0.75（BEHAVIOR §5.3） |
 | 牛群 | 聚合起点 / 力 / 移动档倍率 / 头牛受质心牵引 | 10 m / 0.8 / 2.0 / 0.35 |
 | 牛群 | 跟随触发 / 停止距离 | 22（×个体倍率）/ 9 m |
 | 草场 | 吃草速率 / 饱腹转化 / 饱腹自然下降 / 吃草漂移 | 0.0015 每秒 / 0.12 / 0.0001 每秒 / 0.12 m/s |
@@ -94,6 +96,7 @@ $G --path . -- --shot-delay=10 --player-at=-16,30 ...    # 延时截图、放置
 $G --headless --path . --quit-after 1200 -- --log-positions   # 每秒打印每头牛的状态与位置
 $G --headless --path . --quit-after 700 -- --log-positions --test-sling   # 3 s 后在第一头普通牛旁落石
 $G --headless --path . --quit-after 1500 -- --log-positions --test-drive  # 玩家自动站在群后吆喝跟走
+$G --headless --path . --quit-after 1500 -- --log-positions --test-column # 五头牛排成一列从队尾赶，验证压力能否穿过群（BEHAVIOR §5.3）
 $G --headless --path . --quit-after 9000 -- --log-grass --time-scale=60     # 每 5 s 打印草场均值/退化/秃格/群的占格与饱腹
 $G --headless --path . --quit-after 9000 -- --log-grass --pin-herd --time-scale=60  # 把群按在原地，单独验证局部过牧
 $G --headless --path . --quit-after 900 -- --test-save                      # 牛与草场的存档往返自检
@@ -137,7 +140,10 @@ $G --headless --path . --quit-after 400000 -- --time=0.97 --time-scale=12 --auto
   `build_world(herd)` / `clear_world()` / `reload_world(herd)`；**尚未接到结算的"睡觉"上**——
   现在次日仍是 `HerdManager.begin_new_day()` 就地摆位，重建路径已备好但还没换过去。
 - 地形是平的；起伏与草量可视化留到 M3 处理 T14 时一起做。
-- 人和牛没有动画。
+- 人和牛没有动画。`yak_body.gd` 是静态几何体，REST 与 ALERT 玩家看不见——伙伴感的最大短板（BEHAVIOR §10.1 ④）。
+- 性格只改数值，未形成习惯：四项参数多在 0.75–1.25 浮动（`CowData.roll`），五头起始牛未必抽出明显差异（BEHAVIOR §10.1 ①）。
+- 牛对玩家只有避让与受压，没有信任、认呼唤、主动靠近（BEHAVIOR §10.1 ②）。
+- 牛只向头牛聚合，没有偏好的同伴，"两头牛常一起休息"做不出来（BEHAVIOR §10.1 ③）。
 - 落石的"闷响让其他牛抬头"未做。
 - 惊跑传染只传给半径内的牛，远端不受影响；"赶太猛整群炸"若要，可在区域压力里加传递。
 

@@ -1,0 +1,162 @@
+[gd_scene format=3 uid="uid://b7150og42kvga"]
+
+[ext_resource type="Script" uid="uid://tp08avgu5kdh" path="res://scripts/player/player.gd" id="1_player"]
+[ext_resource type="Script" uid="uid://u56uvd1s1yvn" path="res://scripts/player/camera_rig.gd" id="2_camera"]
+[ext_resource type="Script" uid="uid://tj3takx56i82" path="res://scripts/player/sling.gd" id="3_sling"]
+[ext_resource type="Script" uid="uid://pki3yyyajqns" path="res://scripts/world/day_light.gd" id="5_light"]
+[ext_resource type="Script" uid="uid://1xfojdygo6jy" path="res://scripts/debug/debug_overlay.gd" id="6_debug"]
+[ext_resource type="Script" uid="uid://bm34lote2ifxf" path="res://scripts/world/greybox_props.gd" id="7_props"]
+[ext_resource type="Shader" uid="uid://bv1staqkgsj45" path="res://shaders/grid_ground.gdshader" id="8_grid"]
+[ext_resource type="Script" uid="uid://dhv7ryxdowj3y" path="res://scripts/player/player_body.gd" id="10_body"]
+[ext_resource type="Shader" uid="uid://dlqevgar8cksl" path="res://shaders/grass.gdshader" id="11_grass"]
+[ext_resource type="Script" uid="uid://htfiut0jmmyw" path="res://scripts/world/grass_field.gd" id="12_field"]
+[ext_resource type="Script" uid="uid://cw3kohq8jkcv2" path="res://scripts/world/mountains.gd" id="13_mountains"]
+[ext_resource type="Script" uid="uid://dnc0n5ibh5bbh" path="res://scripts/herd/herd_manager.gd" id="14_herd"]
+[ext_resource type="Script" uid="uid://lonvtmfav2wx" path="res://scripts/world/pen.gd" id="15_pen"]
+[ext_resource type="Resource" path="res://data/species/yak.tres" id="15_yak"]
+[ext_resource type="Script" uid="uid://d4c3fhrkjgdkv" path="res://scripts/world/grassland.gd" id="16_grassland"]
+[ext_resource type="PackedScene" uid="uid://ccpfg8wwigl22" path="res://scenes/ui/settlement_screen.tscn" id="17_settle_ui"]
+[ext_resource type="Script" uid="uid://bptsli75nwxaa" path="res://scripts/ui/day_settlement.gd" id="18_settle"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.35, 0.55, 0.9, 1)
+sky_horizon_color = Color(0.75, 0.82, 0.9, 1)
+ground_horizon_color = Color(0.6, 0.6, 0.5, 1)
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 3
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.72, 0.78, 0.88, 1)
+fog_density = 0.0018
+fog_sky_affect = 0.3
+
+[sub_resource type="BoxShape3D" id="ground_shape"]
+size = Vector3(400, 1, 400)
+
+[sub_resource type="PlaneMesh" id="ground_mesh"]
+size = Vector2(400, 400)
+
+[sub_resource type="ShaderMaterial" id="ground_mat"]
+render_priority = 0
+shader = ExtResource("8_grid")
+shader_parameter/base_color = Color(0.55, 0.6, 0.3, 1)
+shader_parameter/line_color = Color(0.35, 0.4, 0.2, 1)
+shader_parameter/color_bare = Color(0.62, 0.55, 0.34, 1)
+shader_parameter/color_lush = Color(0.42, 0.55, 0.22, 1)
+shader_parameter/major = 10.0
+shader_parameter/minor = 1.0
+shader_parameter/map_size = 400.0
+
+[sub_resource type="CapsuleShape3D" id="player_shape"]
+radius = 0.35
+height = 1.7
+
+[sub_resource type="CapsuleMesh" id="player_mesh"]
+radius = 0.35
+height = 1.7
+
+[node name="M1Sandbox" type="Node3D" unique_id=196823061]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1906498383]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=443336848]
+transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 20, 0)
+shadow_enabled = true
+script = ExtResource("5_light")
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1672022813]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=2135500818]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+shape = SubResource("ground_shape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=603926182]
+mesh = SubResource("ground_mesh")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="Grass" type="MultiMeshInstance3D" parent="." unique_id=1674942964]
+script = ExtResource("12_field")
+grass_shader = ExtResource("11_grass")
+
+[node name="Mountains" type="Node3D" parent="." unique_id=1848452278]
+script = ExtResource("13_mountains")
+
+[node name="Pen" type="Node3D" parent="." unique_id=517100459]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, 30)
+script = ExtResource("15_pen")
+
+[node name="Grassland" type="Node3D" parent="." unique_id=565333115]
+script = ExtResource("16_grassland")
+ground_path = NodePath("../Ground/MeshInstance3D")
+
+[node name="Props" type="Node3D" parent="." unique_id=1563319542]
+script = ExtResource("7_props")
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1164104346 groups=["player"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+collision_layer = 2
+collision_mask = 5
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=1120176912]
+shape = SubResource("player_shape")
+
+[node name="Body" type="Node3D" parent="Player" unique_id=317843681]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.85, 0)
+script = ExtResource("10_body")
+
+[node name="Sling" type="Node3D" parent="Player" unique_id=287651537]
+script = ExtResource("3_sling")
+
+[node name="AimMarker" type="MeshInstance3D" parent="Player/Sling" unique_id=1495488408]
+transform = Transform3D(0.4, 0, 0, 0, 0.05, 0, 0, 0, 0.4, 0, 0, 0)
+top_level = true
+mesh = SubResource("player_mesh")
+
+[node name="Stone" type="MeshInstance3D" parent="Player/Sling" unique_id=28545970]
+transform = Transform3D(0.15, 0, 0, 0, 0.15, 0, 0, 0, 0.15, 0, 0, 0)
+top_level = true
+visible = false
+mesh = SubResource("player_mesh")
+
+[node name="CameraRig" type="Node3D" parent="." unique_id=761945846]
+script = ExtResource("2_camera")
+target_path = NodePath("../Player")
+
+[node name="Pitch" type="Node3D" parent="CameraRig" unique_id=1949623919]
+transform = Transform3D(1, 0, 0, 0, 0.766, 0.643, 0, -0.643, 0.766, 0, 0, 0)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig/Pitch" unique_id=258698627]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 12)
+fov = 60.0
+far = 1200.0
+
+[node name="HerdManager" type="Node" parent="." unique_id=192420928]
+script = ExtResource("14_herd")
+species = ExtResource("15_yak")
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=1210787520]
+
+[node name="SettlementScreen" parent="UI" unique_id=1912661686 instance=ExtResource("17_settle_ui")]
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DaySettlement" type="Node" parent="." unique_id=2090124404]
+script = ExtResource("18_settle")
+screen_path = NodePath("../UI/SettlementScreen")
+
+[node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1183399508]
+script = ExtResource("6_debug")
+
+[node name="Label" type="Label" parent="DebugOverlay" unique_id=1253102844]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 800.0
+offset_bottom = 200.0

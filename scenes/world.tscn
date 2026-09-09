@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://world0herding"]
+[gd_scene format=3 uid="uid://ddp8fpu4xc4um"]
 
 [ext_resource type="Script" uid="uid://tp08avgu5kdh" path="res://scripts/player/player.gd" id="1_player"]
 [ext_resource type="Script" uid="uid://u56uvd1s1yvn" path="res://scripts/player/camera_rig.gd" id="2_camera"]

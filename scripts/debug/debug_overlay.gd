@@ -21,6 +21,10 @@ var _grass_timer: float = 0.0
 var _log_timer: float = 0.0
 var _test_sling: bool = false
 var _test_drive: bool = false
+## --test-column：把牛排成一列，玩家在最后面吆喝着往北推（BEHAVIOR §5.3）。
+## 验证"从后面赶"是否成立：对称排斥会让后牛被前牛顶回来，整列顶死在原地。
+var _test_column: bool = false
+var _column_z0: float = 0.0
 ## --quit-after-days=N：第 N 天结算打印后退出。按帧数的 --quit-after 在引擎缩放下不可靠。
 var _quit_after_days: int = 0
 ## 无头验证用：结算界面弹出后自动按"睡觉"。有窗口时不要开，那样看不见界面。
@@ -40,6 +44,8 @@ func _ready() -> void:
 			_auto_sleep = true
 		if a == "--test-drive":
 			_test_drive = true
+		if a == "--test-column":
+			_test_column = true
 		if a == "--test-sling":
 			_test_sling = true
 		if a == "--log-positions":
@@ -73,6 +79,31 @@ func _ready() -> void:
 			_shot_path = a.trim_prefix("--screenshot=")
 
 func _process(delta: float) -> void:
+	if _test_column:
+		var cows_c := get_tree().get_nodes_in_group("cows")
+		var pc := get_tree().get_first_node_in_group("player") as CharacterBody3D
+		if _column_z0 == 0.0 and not cows_c.is_empty() and pc != null:
+			# 一列纵队，间距 3 m（小于移动档分离半径 4 m，必然互相推）。朝北 = -Z。
+			for i in cows_c.size():
+				var c := cows_c[i] as Node3D
+				c.global_position = Vector3(0.0, 1.0, 6.0 - i * 3.0)
+				c.rotation.y = 0.0
+			# 清掉航道上的石块：--test-column 要测的是牛与牛，不是绕障。
+			for pn in get_tree().get_nodes_in_group("props"):
+				(pn as Node).queue_free()
+			for n2 in get_tree().current_scene.get_children():
+				if n2.name.begins_with("Props") or n2.name.begins_with("Greybox"):
+					n2.queue_free()
+			_column_z0 = 6.0
+			pc.global_position = Vector3(0.0, 1.0, 10.0)
+		if pc != null and not cows_c.is_empty():
+			# 玩家吆喝着从南边跟上，始终在队尾后方 4 m。
+			pc.set("driving", true)
+			var rear := -1e9
+			for c in cows_c:
+				rear = maxf(rear, (c as Node3D).global_position.z)
+			var wantp := Vector3(0.0, pc.global_position.y, rear + 4.0)
+			pc.global_position = pc.global_position.lerp(wantp, 2.0 * delta)
 	if _test_drive:
 		# 玩家站在群的南侧 6 m 处持续吆喝并跟着走。
 		var p := get_tree().get_first_node_in_group("player") as CharacterBody3D
@@ -180,7 +211,11 @@ func _process(delta: float) -> void:
 			var parts: PackedStringArray = []
 			for cow in get_tree().get_nodes_in_group("cows"):
 				var gp: Vector3 = cow.global_position
-				parts.append("%s(%s %.1f,%.1f,%.1f v=%.2f floor=%s)" % [cow.name, cow.state_name(), gp.x, gp.y, gp.z, cow.velocity.length(), cow.is_on_floor()])
+				if _test_column:
+					# vz < 0 = 在往北前进；> 0 = 被顶回来了。
+					parts.append("%s(%s z=%.1f vz=%+.2f)" % [cow.name, cow.state_name(), gp.z, cow.velocity.z])
+				else:
+					parts.append("%s(%s %.1f,%.1f,%.1f v=%.2f floor=%s)" % [cow.name, cow.state_name(), gp.x, gp.y, gp.z, cow.velocity.length(), cow.is_on_floor()])
 			print("POS t=%.2f  %s" % [Clock.time_of_day, " ".join(parts)])
 	if _shot_path != "":
 		_shot_timer -= delta
